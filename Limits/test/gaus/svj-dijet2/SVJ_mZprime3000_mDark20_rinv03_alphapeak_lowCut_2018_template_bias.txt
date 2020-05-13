@@ -1,0 +1,20 @@
+imax 1 number of channels 
+jmax * number of backgrounds 
+kmax * number of nuisance parameters
+-----------------------------------------------------------------------------------
+shapes   para_shape  lowCut_2018    ./ws_svj_lowCut_dijetbins.root    SVJd:$$PROCESS
+shapes   SVJ_mZprime3000_mDark20_rinv03_alphapeak  lowCut_2018    ./ws_svj_lowCut_dijetbins.root    SVJd:$$PROCESS    SVJd:$$PROCESS_$$SYSTEMATIC
+shapes   data_obs  lowCut_2018    ./ws_svj_lowCut_dijetbins.root    SVJd:$$PROCESS
+-----------------------------------------------------------------------------------
+bin               lowCut_2018
+observation       $datrate
+-----------------------------------------------------------------------------------
+bin                                     lowCut_2018                                lowCut_2018                                
+process                                 SVJ_mZprime3000_mDark20_rinv03_alphapeak   para_shape                            
+process                                 0                                          1                                          
+rate                                    $sigrate                                $datrate
+-----------------------------------------------------------------------------------
+lumi                lnN                 1.1                 1.1                 
+lowCut_p1_2         flatParam           
+lowCut_p2_2         flatParam           
+pdf_index_lowCut_2018                   discrete

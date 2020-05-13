@@ -1,0 +1,18 @@
+imax 1 number of channels
+jmax 1 number of processes minus 1
+kmax * number of nuisance parameters
+------------------------------------------------------------
+observation	6557850.000
+------------------------------------------------------------
+shapes * * dijet_combine_qq_1900_lumi-137.500_PFDijet2017_mod.root wPFDijet2017:$$PROCESS wPFDijet2017:$$PROCESS_$$SYSTEMATIC
+------------------------------------------------------------
+bin	PFDijet2017	PFDijet2017
+process	$signame	PFDijet2017_bkg
+process	0	1
+rate	$sigrate	6557841.144
+------------------------------------------------------------
+lumi	lnN	1.062	1.000
+p1_PFDijet2017	flatParam
+p2_PFDijet2017	flatParam
+p3_PFDijet2017	flatParam
+PFDijet2017_bkg_norm	flatParam
