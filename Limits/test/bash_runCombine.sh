@@ -24,7 +24,7 @@ fi
 # lowSVJ2 2 2
 
 testDIR="/uscms_data/d3/cfallon/SVJ/biasStudies/CMSSW_10_2_13/src/Stat/Limits/test/"
-wsDIR="cards_Mar16/SVJ_mZprime${3}_mDark20_rinv03_alphapeak/"
+wsDIR="cards_Mar30_modified/SVJ_mZprime${3}_mDark20_rinv03_alphapeak/"
 wsPATH="${testDIR}${wsDIR}"
 #echo $wsPATH
 for region in lowCut lowSVJ2
@@ -49,7 +49,7 @@ do
 		if [ $runGen == 1 ]
 		then
 			echo "Running GEN for AltSig0"
-			combine $wsPATH/SVJ_mZprime${3}_mDark20_rinv03_alphapeak_${region}_${year}_template_bias.txt -M GenerateOnly --setParameters pdf_index_${region}_${year}=1 --toysFrequentist -t 1000 --expectSignal 0 -n AltSig0 --saveToys -m 125 --freezeParameters pdf_index_${region}_${year},${region}_p2_2,${region}_p1_2 --cminDefaultMinimizerType Minuit --cminDefaultMinimizerAlgo Simplex --bypassFrequentistFit > /dev/null
+			combine $wsPATH/SVJ_mZprime${3}_mDark20_rinv03_alphapeak_${region}_${year}_template_bias.txt -M GenerateOnly --setParameters pdf_index_${region}_${year}=1 --toysFrequentist -t 1000 --expectSignal 0 -n AltSig0 --saveToys -m 125 --freezeParameters pdf_index_${region}_${year},${region}_p2_2_alt,${region}_p1_2_alt,${region}_p2_2,${region}_p1_2 --cminDefaultMinimizerType Minuit --cminDefaultMinimizerAlgo Simplex --bypassFrequentistFit > /dev/null
 		fi
 		if [ $runFit == 1 ]
 		then

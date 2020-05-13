@@ -561,29 +561,29 @@ def getCard(sig, ch, ifilename, outdir, doModelling, mode = "histo", bias = Fals
                      #p4_4 = RooRealVar(ch_red + "_p4_4", "p4", 1., 0., 1000.)
 
 
-                     p1_1 = RooRealVar(ch_red + "_p1_1", "p1", 1., -1000., 1000.)
-                     p1_2 = RooRealVar(ch_red + "_p1_2", "p1", 1., -1000., 1000.)
-                     p1_3 = RooRealVar(ch_red + "_p1_3", "p1", 1., -1000., 1000.)
-                     p1_4 = RooRealVar(ch_red + "_p1_4", "p1", 1., -1000., 1000.)
+                     p1_1 = RooRealVar(ch_red + "_p1_1", "p1", 1., -10., 30.)
+                     p1_2 = RooRealVar(ch_red + "_p1_2", "p1", 1., -10., 30.)
+                     p1_3 = RooRealVar(ch_red + "_p1_3", "p1", 1., -10., 30.)
+                     p1_4 = RooRealVar(ch_red + "_p1_4", "p1", 1., -10., 30.)
 
-                     p2_1 = RooRealVar(ch_red + "_p2_1", "p2", 1., -1000., 1000.)
-                     p2_2 = RooRealVar(ch_red + "_p2_2", "p2", 1., -1000., 1000.)
-                     p2_3 = RooRealVar(ch_red + "_p2_3", "p2", 1., -1000., 1000.)
-                     p2_4 = RooRealVar(ch_red + "_p2_4", "p2", 1., -1000., 1000.)
+                     p2_1 = RooRealVar(ch_red + "_p2_1", "p2", 1., -10., 30.)
+                     p2_2 = RooRealVar(ch_red + "_p2_2", "p2", 1., -10., 30.)
+                     p2_3 = RooRealVar(ch_red + "_p2_3", "p2", 1., -10., 30.)
+                     p2_4 = RooRealVar(ch_red + "_p2_4", "p2", 1., -10., 30.)
 
-                     p3_1 = RooRealVar(ch_red + "_p3_1", "p3", 1., -1000., 1000.)
-                     p3_2 = RooRealVar(ch_red + "_p3_2", "p3", 1., -1000., 1000.)
-                     p3_3 = RooRealVar(ch_red + "_p3_3", "p3", 1., -1000., 1000.)
-                     p3_4 = RooRealVar(ch_red + "_p3_4", "p3", 1., -1000., 1000.)
+                     p3_1 = RooRealVar(ch_red + "_p3_1", "p3", 1., -10., 30.)
+                     p3_2 = RooRealVar(ch_red + "_p3_2", "p3", 1., -10., 30.)
+                     p3_3 = RooRealVar(ch_red + "_p3_3", "p3", 1., -10., 30.)
+                     p3_4 = RooRealVar(ch_red + "_p3_4", "p3", 1., -10., 30.)
 
-                     p4_2 = RooRealVar(ch_red + "_p4_2", "p4", 1., -1000., 1000.)
-                     p4_3 = RooRealVar(ch_red + "_p4_3", "p4", 1., -1000., 1000.)
-                     p4_4 = RooRealVar(ch_red + "_p4_4", "p4", 1., -1000., 1000.)
+                     p4_2 = RooRealVar(ch_red + "_p4_2", "p4", 1., -10., 30.)
+                     p4_3 = RooRealVar(ch_red + "_p4_3", "p4", 1., -10., 30.)
+                     p4_4 = RooRealVar(ch_red + "_p4_4", "p4", 1., -10., 30.)
 
-                     p5_3 = RooRealVar(ch_red + "_p5_3", "p5", 1., -1000., 1000.)
-                     p5_4 = RooRealVar(ch_red + "_p5_4", "p5", 1., -1000., 1000.)
+                     p5_3 = RooRealVar(ch_red + "_p5_3", "p5", 1., -10., 30.)
+                     p5_4 = RooRealVar(ch_red + "_p5_4", "p5", 1., -10., 30.)
 
-                     p6_4 = RooRealVar(ch_red + "_p6_4", "p6", 1., -1000., 1000.)
+                     p6_4 = RooRealVar(ch_red + "_p6_4", "p6", 1., -10., 30.)
 
                      p0_1 = RooRealVar(ch_red + "_p0_1", "p0", 1., 0., 1000.) # p0 is needed for Bernstein poly.
                      p0_2 = RooRealVar(ch_red + "_p0_2", "p0", 1., 0., 1000.) # By giving n+1 coefficients in the constructor
@@ -1127,30 +1127,30 @@ def getCard(sig, ch, ifilename, outdir, doModelling, mode = "histo", bias = Fals
                      getattr(w, "import")(cat)#, RooFit.Rename(cat.GetName()))
                      getattr(w, "import")(normulti)#, RooFit.Rename(normulti.GetName()))
                      getattr(w, "import")(roomultipdf)#, RooFit.Rename(roomultipdf.GetName()))
+              #comment out tempariily to remove binUp/downs
+              #for i in xrange(hist.GetNbinsX()):
+              #       mcstatSysName = "mcstat_%s_%s_MC2018bin%d"  % (ch, sig, i+1)
+              #       #print mcstatSysName
+              #       #print sig + "_" + mcstatSysName + "Up"
+              #       mcstatSigUp = getHist(ch, sig + "_" + mcstatSysName + "Up", ifile)
 
-              for i in xrange(hist.GetNbinsX()):
-                     mcstatSysName = "mcstat_%s_%s_MC2018bin%d"  % (ch, sig, i+1)
-                     #print mcstatSysName
-                     #print sig + "_" + mcstatSysName + "Up"
-                     mcstatSigUp = getHist(ch, sig + "_" + mcstatSysName + "Up", ifile)
-
-                     #print "Integral  ", mcstatSigUp.Integral()
-                     mcstatSigDown = getHist(ch, sig + "_" + mcstatSysName + "Down", ifile)
-                     mcstatSigHistUp = RooDataHist(sig + "_" + mcstatSysName + "Up", "Data (MC sig)",  RooArgList(mT), mcstatSigUp, 1.)
-                     mcstatSigHistDown = RooDataHist(sig + "_" + mcstatSysName + "Down", "Data (MC sig)",  RooArgList(mT), mcstatSigDown, 1.)
-                     getattr(w, "import")(mcstatSigHistUp, RooFit.Rename(sig + "_" + mcstatSysName + "Up") )
-                     getattr(w, "import")(mcstatSigHistDown, RooFit.Rename(sig + "_" + mcstatSysName + "Down") )
+              #       #print "Integral  ", mcstatSigUp.Integral()
+              #       mcstatSigDown = getHist(ch, sig + "_" + mcstatSysName + "Down", ifile)
+              #       mcstatSigHistUp = RooDataHist(sig + "_" + mcstatSysName + "Up", "Data (MC sig)",  RooArgList(mT), mcstatSigUp, 1.)
+              #       mcstatSigHistDown = RooDataHist(sig + "_" + mcstatSysName + "Down", "Data (MC sig)",  RooArgList(mT), mcstatSigDown, 1.)
+              #       getattr(w, "import")(mcstatSigHistUp, RooFit.Rename(sig + "_" + mcstatSysName + "Up") )
+              #       getattr(w, "import")(mcstatSigHistDown, RooFit.Rename(sig + "_" + mcstatSysName + "Down") )
 
               
-              for sysName,sysValue  in syst.iteritems():
-                     if(sysValue[0]=="shape" and "mcstat" not in sysName):              
-                            sysUp =  getHist(ch, sig + "_" + sysName + "Up", ifile)
-                            sysDown =  getHist(ch, sig + "_" + sysName + "Down", ifile)
-                            #print "==> Trigg sys name: ", sig + "_" + sysName + "Down"
-                            sysSigHistUp = RooDataHist(sig + "_" + sysName + "Up", sysName + " uncertainty",  RooArgList(mT), sysUp, 1.)
-                            sysSigHistDown = RooDataHist(sig + "_" + sysName + "Down", sysName + " uncertainty",  RooArgList(mT), sysDown, 1.)
-                            getattr(w, "import")(sysSigHistUp, RooFit.Rename(sig + "_" + sysName + "Up") )
-                            getattr(w, "import")(sysSigHistDown, RooFit.Rename(sig + "_" + sysName + "Down") )
+              #for sysName,sysValue  in syst.iteritems():
+              #       if(sysValue[0]=="shape" and "mcstat" not in sysName):              
+              #              sysUp =  getHist(ch, sig + "_" + sysName + "Up", ifile)
+              #              sysDown =  getHist(ch, sig + "_" + sysName + "Down", ifile)
+              #              #print "==> Trigg sys name: ", sig + "_" + sysName + "Down"
+              #              sysSigHistUp = RooDataHist(sig + "_" + sysName + "Up", sysName + " uncertainty",  RooArgList(mT), sysUp, 1.)
+              #              sysSigHistDown = RooDataHist(sig + "_" + sysName + "Down", sysName + " uncertainty",  RooArgList(mT), sysDown, 1.)
+              #              getattr(w, "import")(sysSigHistUp, RooFit.Rename(sig + "_" + sysName + "Up") )
+              #              getattr(w, "import")(sysSigHistDown, RooFit.Rename(sig + "_" + sysName + "Down") )
                             
 
 

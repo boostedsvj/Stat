@@ -48,7 +48,7 @@ for p in sigpoints:
     #if(bias):     signal  = "SVJ_mZprime%s_mDark%s_rinv%s_alpha%s_bias" % (mZprime, mDark, rinv, alpha) 
     signals.append(signal)
 
-
+print "====> SIGNALS: ", signals
 
 #signals = ["SVJ_mZprime3000_mDark20_rinv03_alphapeak"]
 
@@ -90,7 +90,8 @@ os.system(cmd)
 effs = {}
 
 
-ch_eff = ["lowSVJ0", "lowSVJ1", "lowSVJ2", "highSVJ0", "highSVJ1", "highSVJ2"]
+#ch_eff = ["lowSVJ0", "lowSVJ1", "lowSVJ2", "highSVJ0", "highSVJ1", "highSVJ2"]
+ch_eff = ["lowSVJ2", "highSVJ2", "lowCut", "highCut"]
 ch_eff_year = []
 for y in years:
     ch_eff_years = [ch + '_' + y for ch in ch_eff ]
@@ -98,7 +99,7 @@ for y in years:
 
 
 for s in signals:
-
+    print(s, ch_eff_year, ifilename) 
     effs[s] = getEfficiency(s, ch_eff_year, ifilename)
 
 y = json.dumps(effs)

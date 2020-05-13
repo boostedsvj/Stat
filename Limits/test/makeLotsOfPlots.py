@@ -9,7 +9,7 @@ rt.gStyle.SetOptFit(1011)
 #regions = ["lowCut","lowSVJ1","lowSVJ2","highCut","highSVJ1","highSVJ2"]
 regions = ["lowCut","lowSVJ2","highCut","highSVJ2"]
 #regions = ["highCut"]
-# Mar16
+# Mar30_modified
 # Region Thry/Main Dijet/Alt
 # highCut 2 3
 # highSVJ2 1 1
@@ -23,10 +23,10 @@ for region in regions:
 				halfName = toyFunc+sigStr
 				fullName = toyFunc+sigStr+fitFunc
 				n = sigStr[3]
-				fitDiagFile = rt.TFile.Open("cards_Mar16/SVJ_mZprime3000_mDark20_rinv03_alphapeak/"+region+"/fitDiagnostics"+fullName+".root","read")
-				fitOnlyFile = rt.TFile.Open("cards_Mar16/SVJ_mZprime3000_mDark20_rinv03_alphapeak/"+region+"/higgsCombine"+fullName+".FitDiagnostics.mH120.123456.root","read")
-				genOnlyFile = rt.TFile.Open("cards_Mar16/SVJ_mZprime3000_mDark20_rinv03_alphapeak/"+region+"/higgsCombine"+halfName+".GenerateOnly.mH125.123456.root","read")
-				dataObsFile = rt.TFile.Open("cards_Mar16/SVJ_mZprime3000_mDark20_rinv03_alphapeak/ws_SVJ_mZprime3000_mDark20_rinv03_alphapeak_"+region+"_2018_template.root","read")
+				fitDiagFile = rt.TFile.Open("cards_Mar30_modified/SVJ_mZprime3000_mDark20_rinv03_alphapeak/"+region+"/fitDiagnostics"+fullName+".root","read")
+				fitOnlyFile = rt.TFile.Open("cards_Mar30_modified/SVJ_mZprime3000_mDark20_rinv03_alphapeak/"+region+"/higgsCombine"+fullName+".FitDiagnostics.mH120.123456.root","read")
+				genOnlyFile = rt.TFile.Open("cards_Mar30_modified/SVJ_mZprime3000_mDark20_rinv03_alphapeak/"+region+"/higgsCombine"+halfName+".GenerateOnly.mH125.123456.root","read")
+				dataObsFile = rt.TFile.Open("cards_Mar30_modified/SVJ_mZprime3000_mDark20_rinv03_alphapeak/ws_SVJ_mZprime3000_mDark20_rinv03_alphapeak_"+region+"_2018_template.root","read")
 				svjWs = dataObsFile.Get("SVJ")
 				data = rt.RooDataHist()
 				data = svjWs.data("data_obs")
@@ -52,10 +52,10 @@ for region in regions:
 					upLimitrErr = 2.83
 					downLimitRMU = 0.3
 					upLimitRMU = 0.4
-					parLimDown1 = 6.3
-					parLimUp1 = 6.31
-					parLimDown2 = 11.427
-					parLimUp2 = 11.429
+					parLimDown1 = 5.8
+					parLimUp1 = 7.3
+					parLimDown2 = 7.37
+					parLimUp2 = 11.438
 					chi2LimitDown = 0
 					chi2LimitUp = 30
 				elif ((region == "highCut") and (toyFunc == "Main")):
@@ -67,8 +67,8 @@ for region in regions:
 					upLimitRMU = 0.4
 					parLimDown1 = 6.3
 					parLimUp1 = 6.31
-					parLimDown2 = 11.4275
-					parLimUp2 = 11.4285
+					parLimDown2 = 11.437
+					parLimUp2 = 11.438
 					chi2LimitDown = 0
 					chi2LimitUp = 30
 				elif ((region == "highSVJ2") and (toyFunc == "Alt")):
@@ -355,11 +355,11 @@ for region in regions:
 				chi2HistChi2Up.Draw("hist same")
 				chi2HistChi2Down.Draw("hist same")
 				#chi2Func.Draw("same")
-				c1.SaveAs("cards_Mar16/SVJ_mZprime3000_mDark20_rinv03_alphapeak/plots/AA_"+region+"_"+fullName+"_10plots.png")
+				c1.SaveAs("cards_Mar30_modified/SVJ_mZprime3000_mDark20_rinv03_alphapeak/plots/AA_"+region+"_"+fullName+"_10plots.png")
 	
 				c2 = rt.TCanvas("c2","c2",1000,1000)
 				hist2D_chi2_rmu.Draw("colz")
-				c2.SaveAs("cards_Mar16/SVJ_mZprime3000_mDark20_rinv03_alphapeak/plots/BB_"+region+"_"+fullName+"_2dPlot.png")
+				c2.SaveAs("cards_Mar30_modified/SVJ_mZprime3000_mDark20_rinv03_alphapeak/plots/BB_"+region+"_"+fullName+"_2dPlot.png")
 
 				fitDiagFile.Close()
 				genOnlyFile.Close()
