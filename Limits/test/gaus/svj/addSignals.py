@@ -19,7 +19,7 @@ r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
 
 fname = "ws_SVJ_mZprime3000_mDark20_rinv03_alphapeak_"+region+"_2018_template"
 
-infile = r.TFile.Open(fname+".root","READ")
+infile = r.TFile.Open("root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/gaus/svj/"+fname+".root","READ")
 
 w = infile.Get("SVJ")
 

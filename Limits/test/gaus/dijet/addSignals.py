@@ -16,7 +16,7 @@ r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
 
 fname = "dijet_combine_qq_1900_lumi-137.500_PFDijet2017"
 
-infile = r.TFile.Open(fname+".root","READ")
+infile = r.TFile.Open("root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/gaus/dijet/"+fname+".root","READ")
 
 w = infile.Get("wPFDijet2017")
 

@@ -17,7 +17,7 @@ def fill_template(inname, outname, **kwargs):
 
 r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
 
-infile = r.TFile.Open("dijet_combine_qq_1900_lumi-137.500_PFDijet2017.root","READ")
+infile = r.TFile.Open("root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/gaus/dijet-svj/dijet_combine_qq_1900_lumi-137.500_PFDijet2017.root","READ")
 
 w = infile.Get("wPFDijet2017")
 
