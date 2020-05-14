@@ -13,3 +13,8 @@ Input workspaces in ROOT files are available in the corresponding folders at:
 ```
 root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/gaus/
 ```
+
+Instructions:
+1. Run either `addSignals.py` or `transformSVJ.py` (sometimes the region might need to be provided: dijet, highCut, highSVJ2, lowCut, or lowSVJ2)
+2. Run `runBias.sh` (possible arguments: region, "extra" = SVJ options rather than dijet options)
+3. Run `plotBias.py` (again providing region, "extra"), `plotSignals.py`
