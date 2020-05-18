@@ -1,0 +1,21 @@
+imax 1 number of channels 
+jmax * number of backgrounds 
+kmax * number of nuisance parameters
+-----------------------------------------------------------------------------------
+shapes   roomultipdf  highCut_2018    ./ws_SVJ_mZprime3000_mDark20_rinv03_alphapeak_highCut_2018_template.root    SVJ:$PROCESS
+shapes   SVJ_mZprime3000_mDark20_rinv03_alphapeak  highCut_2018    ./ws_SVJ_mZprime3000_mDark20_rinv03_alphapeak_highCut_2018_template.root    SVJ:$PROCESS    SVJ:$PROCESS_$SYSTEMATIC
+shapes   data_obs  highCut_2018    ./ws_SVJ_mZprime3000_mDark20_rinv03_alphapeak_highCut_2018_template.root    SVJ:$PROCESS
+-----------------------------------------------------------------------------------
+bin               highCut_2018
+observation       10941.000000
+-----------------------------------------------------------------------------------
+bin                                     highCut_2018                               highCut_2018                               
+process                                 SVJ_mZprime3000_mDark20_rinv03_alphapeak   roomultipdf                           
+process                                 0                                          1                                          
+rate                                    156.003928                                 15555.3839636                              
+-----------------------------------------------------------------------------------
+lumi                lnN                 1.1                 1.1                 
+highCut_p1_3        flatParam           
+highCut_p2_3        flatParam           
+highCut_p3_3        flatParam           
+pdf_index_highCut_2018                  discrete
