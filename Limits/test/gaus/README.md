@@ -8,6 +8,7 @@ Folder : bias study description:
 * [svj3000](./svj3000): svj search with MT < 3000
 * [svj-dijet](./svj-dijet): svj search w/ dijet bins
 * [svj-dijet2](./svj-dijet2): svj search w/ dijet bins and RooParametricShapeBinPdf
+* [svj-para](./svj-para): svj search with RooParametricShapeBinPdf
 
 Input workspaces in ROOT files are available in the corresponding folders at:
 ```
