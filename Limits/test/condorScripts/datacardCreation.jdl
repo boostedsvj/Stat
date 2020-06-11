@@ -1,0 +1,70 @@
+universe = vanilla
+Executable = datacardCreation.sh
+Should_Transfer_Files = YES
+WhenToTransferOutput = ON_EXIT
+Transfer_Input_Files = datacardCreation.sh
+Output = SVJ_mZprime$(mZ)_mDark$(mD)_rinv$(rI)_alpha$(A).stdout
+Error = SVJ_mZprime$(mZ)_mDark$(mD)_rinv$(rI)_alpha$(A).stderr
+Log = SVJ_mZprime$(mZ)_mDark$(mD)_rinv$(rI)_alpha$(A).log
+x509userproxy = $ENV(X509_USER_PROXY)
+mZ = 3000
+mD = 20
+rI = 03
+aD = peak
+Arguments = SVJ_mZprime$(mZ)_mDark$(mD)_rinv$(rI)_alpha$(aD)/ template $(mZ) $(md) $(rI) $(aD)
+Queue mZ, mD, rI, aD from (
+3000, 20, 03, peak
+1500, 20, 03, peak
+1600, 20, 03, peak
+1700, 20, 03, peak
+1800, 20, 03, peak
+1900, 20, 03, peak
+2000, 20, 03, peak
+2100, 20, 03, peak
+2200, 20, 03, peak
+2300, 20, 03, peak
+2400, 20, 03, peak
+2500, 20, 03, peak
+2600, 20, 03, peak
+2700, 20, 03, peak
+2800, 20, 03, peak
+2900, 20, 03, peak
+3100, 20, 03, peak
+3200, 20, 03, peak
+3300, 20, 03, peak
+3400, 20, 03, peak
+3500, 20, 03, peak
+3600, 20, 03, peak
+3700, 20, 03, peak
+3800, 20, 03, peak
+3900, 20, 03, peak
+4000, 20, 03, peak
+4100, 20, 03, peak
+4200, 20, 03, peak
+4300, 20, 03, peak
+4400, 20, 03, peak
+4500, 20, 03, peak
+3000, 1, 03, peak
+3000, 5, 03, peak
+3000, 10, 03, peak
+3000, 30, 03, peak
+3000, 40, 03, peak
+3000, 50, 03, peak
+3000, 60, 03, peak
+3000, 70, 03, peak
+3000, 80, 03, peak
+3000, 90, 03, peak
+3000, 100, 03, peak
+3000, 20, 0, peak
+3000, 20, 01, peak
+3000, 20, 02, peak
+3000, 20, 04, peak
+3000, 20, 05, peak
+3000, 20, 06, peak
+3000, 20, 07, peak
+3000, 20, 08, peak
+3000, 20, 09, peak
+3000, 20, 1, peak
+3000, 20, 03, low
+3000, 20, 03, high
+)
