@@ -9,6 +9,7 @@ Folder : bias study description:
 * [svj-dijet](./svj-dijet): svj search w/ dijet bins
 * [svj-dijet2](./svj-dijet2): svj search w/ dijet bins and RooParametricShapeBinPdf
 * [svj-para](./svj-para): svj search with RooParametricShapeBinPdf
+* [dijet-svj2000](./dijet-svj2000): dijet search, data rescaled to SVJ-like yield, 2 TeV SVJ signal
 
 Input workspaces in ROOT files are available in the corresponding folders at:
 ```
