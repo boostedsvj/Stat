@@ -23,6 +23,11 @@
 5. Make new `limit` tree w/ results from step 3 or 4
 * Combine output (steps 1,2,4) can be reused when rerunning command
 
+## `initCLs.py`
+* AsymptoticLimits w/ better initialization:
+1. Estimate bkg fit parameters, normalizations using median expected from AsymptoticLimits w/ systematics disabled
+2. Rerun AsymptoticLimits (or ManualCLs) w/ parameters, normalizations from step 1 as initial values
+
 Some features in these scripts require one of the following Combine branches:
 1. Minor fixes: https://github.com/kpedro88/HiggsAnalysis-CombinedLimit/tree/faster_para_plus
 2. above + ad-hoc procedures to try to improve false minima: https://github.com/kpedro88/HiggsAnalysis-CombinedLimit/tree/faster_para_plus_debug_improve

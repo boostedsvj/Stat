@@ -27,7 +27,8 @@ parser.add_argument("-f", "--freezeNorm", dest="freezeNorm", default=False, acti
 parser.add_argument("-m", "--mod", dest="mod", type=str, default=[], choices=["F12","Alt","Minfix","Robust","S0","Nostat"], nargs="*", help="modification(s)")
 parser.add_argument("-j", "--just-hadd", dest="just_hadd", default=False, action="store_true", help="don't run any combine commands, just hadd")
 parser.add_argument("-M", "--manualCLs", dest="manualCLs", default=False, action='store_true', help="use manual CLs algorithm")
-parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs")
+parser.add_argument("-i", "--initCLs", dest="initCLs", default=False, action='store_true', help="use initialized CLs algorithm")
+parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs or init CLs")
 args = parser.parse_args()
 
 pwd = os.getcwd()
@@ -139,7 +140,18 @@ def doLimit(mass):
     # run combine
     cargs += " -d "+dcfname
     if args.manualCLs:
+        ivals = ""
+        # to use initCLs and manualCLs together, extract initial param values from initCLs (skip step2) and pass to manualCLs
+        if args.initCLs:
+            icommand = 'python ../initCLs.py {} -a "{}" -n {}'.format("-p -r step2",cargs,combo+"_"+cname.replace("Manual",""))
+            outputs.append(icommand)
+            if not args.dry_run:
+                outputs.append(runCmd(icommand))
+                ivals = outputs[-1].splitlines()[-1]
+                cargs = cargs.replace("--setParameters ","--setParameters "+ivals+',')
         command = 'python ../manualCLs.py {} -a "{}" -n {}'.format(args.extra,cargs,combo+"_"+cname)
+    elif args.initCLs:
+        command = 'python ../initCLs.py {} -a "{}" -n {}'.format(args.extra,cargs,combo+"_"+cname)
     else:
         command = "combine -M AsymptoticLimits "+cargs
     outputs.append(command)
@@ -171,10 +183,13 @@ masses = [
 5100,
 ]
 
+# masses = [3500]
+
 cname = "Test"
 if len(args.mod)>0: cname += ''.join(args.mod)
 if args.freezeNorm: cname += "Frz"
 if args.manualCLs: cname += "Manual"
+if args.initCLs: cname += "Init"
 
 combos = {
 "cut": ["highCut","lowCut"],
@@ -193,7 +208,8 @@ for combo,regions in combos.iteritems():
     for mass in masses:
         signame = "SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(mass)
         mname = "ManualCLs" if args.manualCLs else "AsymptoticLimits"
-        fname = signame+"/higgsCombine"+cname+"."+mname+".mH120.ana"+combo+".root"
+        sname = "Step2" if args.initCLs and not args.manualCLs else ""
+        fname = signame+"/higgsCombine"+sname+cname+"."+mname+".mH120.ana"+combo+".root"
         append = False
         if args.dry_run:
             append = True

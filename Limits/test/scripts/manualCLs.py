@@ -136,6 +136,7 @@ def step3(args, scans):
         elif e.quantileExpected > -1:
             if e.r in r_dict: r_dict[e.r][1] = e.deltaNLL
 
+    fprint("INFO: r_data_bestfit = {}, r_asimov_bestfit = {}".format(r_data_bestfit,r_asimov_bestfit))
     r_dict = {k:v for k,v in r_dict.iteritems() if v[1] is not None}
     r_data = list(sorted(r_dict))
     rmin = min(r_data)
