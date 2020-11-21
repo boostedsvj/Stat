@@ -61,7 +61,7 @@ def step2(args, ofname1):
     combo = ofname1.split('.')[3].replace("ana","")
     
     # run AsymptoticLimits w/ initial values from above
-    args2 = updateArg(args.args, ["--setParameters"], ','.join(params[combo]))
+    args2 = updateArg(args.args, ["--setParameters"], ','.join(params[combo]), ',')
     args2 = updateArg(args2, ["-n","--name"], "Step2")
     cmd2 = "combine -M AsymptoticLimits "+args2
     fprint(cmd2)
