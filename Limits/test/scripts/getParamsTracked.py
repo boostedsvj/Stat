@@ -1,82 +1,94 @@
 import os,sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from pprint import pprint
 
-def getParamsTracked(mass, name, method, quantile, do_set, do_param, quiet):
+def getBranches(tree, match="", exact=False):
     import ROOT as r
+    branches = []
+    for b in tree.GetListOfBranches():
+        leaf = b.GetLeaf(b.GetName())
+        if len(match)==0 or (exact and match==b.GetName()) or (not exact and match in b.GetName()):
+            branches.append(b.GetName())
+    return branches
 
+def getParamsAuto(tree, region):
+    return sorted(getBranches(tree, region))
+
+# retained for comparison w/ automatic approach above
+def getParams(fn, region, prefix="trackedParams_"):
+    params = dict(
+        main = dict(
+            highCut = (4,5),
+            lowCut = (1,2),
+            highSVJ2 = (1,2),
+            lowSVJ2 = (1,2),
+        ),
+        alt = dict(
+            highCut = (3,3),
+            lowCut = (3,3),
+            highSVJ2 = (2,2),
+            lowSVJ2 = (2,2),
+        )
+    )
+
+    order = params[fn][region][0]
+    n = params[fn][region][1]
+    pnames = ["{}{}_p{}_{}".format(prefix,region,i+1,order)+("_alt" if "Alt" in fn else "") for i in range(n)]
+    return pnames
+
+def getFname(mass, name, method, combo, quiet=True):
+    signame = "SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(mass)
+    if not quiet: print signame
+    fname = "higgsCombine{}.{}.mH120.ana{}.root".format(name,method,combo)
+    if mass!=0 and not os.path.basename(os.getcwd())==signame: fname = signame+"/"+fname
+    return fname
+
+def getParamsText(params):
+    return ["{}={}".format(p.replace('trackedParam_',''),v) for p,v in sorted(params.iteritems()) if any(x in p for x in ['high','low','shapeBkg'])]
+
+def getAll(mass, name, method, quantile, do_set, do_param, quiet):
     combos = {
         "cut": ["highCut","lowCut"],
         "bdt": ["highSVJ2","lowSVJ2"],
     }
-    main_params = {
-        "highCut": (4,5),
-        "lowCut": (1,2),
-        "highSVJ2": (1,2),
-        "lowSVJ2": (1,2),
-    }
-    if "Alt" in name:
-        main_params = {
-            "highCut": (3,3),
-            "lowCut": (3,3),
-            "highSVJ2": (2,2),
-            "lowSVJ2": (2,2),
-        }
 
-    # todo: list all tree branches to find # params automatically
-    def get_params(region):
-        order = main_params[region][0]
-        n = main_params[region][1]
-        params = ["{}_p{}_{}".format(region.replace("_2018",""),i+1,order)+("_alt" if "Alt" in name else "") for i in range(n)]
-        return params
+    results = {}
+    for combo,regions in combos.iteritems():
+        results[combo] = getParamsTracked(getFname(mass, name, method, combo, quiet), quantile)
+        if not quiet:
+            pprint(results[combo])
+        if do_set:
+            output = getParamsText(results[combo])
+            if not quiet: print ','.join(output)
+        # todo: restore do_param case (consider min and max from all expected limit values, print in gaussian constrained param format)
+    return results
+
+def getParamsTracked(fname, quantile):
+    import ROOT as r
 
     condition = "abs(quantileExpected-{})<0.001".format(quantile)
-    signame = "SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(mass)
     results = {}
-    if not quiet: print signame
-    for combo,regions in combos.iteritems():
-        fname = "higgsCombine{}.{}.mH120.ana{}.root".format(name,method,combo)
-        if mass!=0 and not os.path.basename(os.getcwd())==signame: fname = signame+"/"+fname
-        if not os.path.exists(fname): continue
-        results[combo] = []
-        file = r.TFile.Open(fname)
-        tree = file.Get("limit")
-        for region in regions:
-            # todo: refactor this part into separate function that just delivers dict of params:values
-            p = get_params(region)
-            p = ['trackedParam_'+pp for pp in p]
-            n = tree.Draw(':'.join(p),condition,"goff")
-            if n<=0: continue
-            v = [str(tree.GetVal(i)[0]) for i in range(len(p))]
+    if not os.path.exists(fname): return results
+    file = r.TFile.Open(fname)
+    tree = file.Get("limit")
 
-            ch = "ch1" if "high" in region else "ch2"
-            p2 = ['trackedParam_shapeBkg_roomultipdf_'+ch+'__norm','trackedParam_n_exp_final_bin'+ch+'_proc_roomultipdf']
-            if mass!=0: p2.append('trackedParam_n_exp_final_bin'+ch+'_proc_'+signame)
-            n2 = tree.Draw(':'.join(p2),condition,"goff")
-            v2 = [str(tree.GetVal(i)[0]) for i in range(len(p2))]
+    params = []
+    # background normalization factors
+    params.extend(getBranches(tree, "shapeBkg"))
+    # background & signal final normalizations
+    params.extend(getBranches(tree, "n_exp_final"))
+    # signal strength (from MDF)
+    params.extend(getBranches(tree, "r", exact=True))
 
-            # todo: print in useful format for postfit plots
-            if not quiet: print '{}: {}\n  {}'.format(region, ','.join(v), ','.join(v2))
+    for region in ["high","low"]:
+        # background fit parameters
+        params.extend(getParamsAuto(tree, region))
 
-            if do_set:
-                output = ["{}={}".format(p[i].replace('trackedParam_',''),v[i]) for i in range(len(p))]+["{}={}".format(p2[i].replace('trackedParam_',''),v2[i]) for i in range(len(p2)) if "n_exp" not in p2[i]]
-                results[combo].extend(output)
-                if not quiet: print ','.join(output)
-            if do_param:
-                for pp in [p,p2]:
-                    vv = v if pp==p else v2
-                    for i in range(len(pp)):
-                        if "n_exp" in pp[i]: continue
-                        # consider min and max from all expected limit values
-                        n = tree.Draw(pp[i],"quantileExpected>0","goff")
-                        v3 = tree.GetVal(0)
-                        v3.SetSize(tree.GetSelectedRows())
-                        stdev = max(abs(float(vv[i])-max(v3)),abs(float(vv[i])-min(v3)))
-                        if not quiet: print '{} param {} {}'.format(pp[i].replace('trackedParam_',''),vv[i],stdev)
+    # deliver dict of params:values
+    n = tree.Draw(':'.join(params),condition,"goff")
+    if n<=0: return results
 
-        n = tree.Draw("limit",condition,"goff")
-        if n<=0: continue
-        if not quiet: print 'r: {}'.format(tree.GetVal(0)[0])
-
+    results = {p:tree.GetVal(i)[0] for i,p in enumerate(params)}
     return results
 
 if __name__=="__main__":
@@ -90,4 +102,5 @@ if __name__=="__main__":
     parser.add_argument("--quiet", dest="quiet", default=False, action="store_true", help="suppress printouts")
     args = parser.parse_args()
 
-    getParamsTracked(args.mass, args.name, args.method, args.quantile, args.set, args.param, args.quiet)
+    getAll(args.mass, args.name, args.method, args.quantile, args.set, args.param, args.quiet)
+

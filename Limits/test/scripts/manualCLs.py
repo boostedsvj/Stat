@@ -109,7 +109,7 @@ def step3(args, scans):
 
     if args.dry_run:
         # return dummy dictionary to be used in step4 commands
-        return {q:0.0 for q in quantiles+[-1]}
+        return {q:0.0 for q in quantiles+[-1]}, False, False
 
     import ROOT as r
     # put root in batch mode
@@ -313,17 +313,27 @@ def step3(args, scans):
 
 def step4(args, limits):
     # run MDF for each r value to get output tree w/ proper fit params, normalizations, etc.
-    # include prefit (bkg-only) as quantile=-2 w/ r=0
+    # include: prefit (bkg-only) as quantile=-2 w/ r=0
+    #          bestfit (obs) as quantile=-3
+    #          bestfit (asimov) as quantile=-4
     limits[-2] = 0.
+    limits[-3] = 0.
+    limits[-4] = 0.
     
     ofnames = {}
     index = 0
     no_reuse = "step4" not in args.reuse
     for q, rval in sorted(limits.iteritems()):
-        args4 = updateArg(args.args, ["--setParameters"], "r={}".format(rval), ',')
-        args4 = updateArg(args4, ["--freezeParameters"], "r", ',')
+        args4 = args.args[:]
+        extra = ""
+        if q==-3 or q==-4:
+            extra = "--X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --saveNLL"
+            if q==-4: extra += " -t -1 --toysFreq"
+        else:
+            args4 = updateArg(args4, ["--setParameters"], "r={}".format(rval), ',')
+            args4 = updateArg(args4, ["--freezeParameters"], "r", ',')
         args4 = updateArg(args4, ["-n","--name"], "Postfit{}".format(index))
-        cmd4 = "combine -M MultiDimFit {} {}".format(args4,args.fitopts)
+        cmd4 = "combine -M MultiDimFit {} {} {}".format(extra,args4,args.fitopts)
         fprint(cmd4)
         logfname4 = "log_step4q{}_{}.log".format(q,args.name)
         ofname4 = ""

@@ -1,6 +1,6 @@
 import os,sys,subprocess,shlex,uuid
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from getParamsTracked import getParamsTracked
+from getParamsTracked import getParamsTracked, getParamsText
 
 # make status messages useful
 def fprint(msg):
@@ -57,11 +57,11 @@ def step1(args):
 
 def step2(args, ofname1):
     # obtain parameter values from step1 (median exp)
-    params = getParamsTracked(0, ofname1.split('.')[0].replace("higgsCombine",""), ofname1.split('.')[1], 0.5, True, False, True)
-    combo = ofname1.split('.')[3].replace("ana","")
+    params = getParamsTracked(ofname1, 0.5)
+    params_text = getParamsText(params)
     
     # run AsymptoticLimits w/ initial values from above
-    args2 = updateArg(args.args, ["--setParameters"], ','.join(params[combo]), ',')
+    args2 = updateArg(args.args, ["--setParameters"], ','.join(params_text), ',')
     args2 = updateArg(args2, ["-n","--name"], "Step2")
     cmd2 = "combine -M AsymptoticLimits "+args2
     fprint(cmd2)
@@ -81,7 +81,7 @@ def initCLs(args):
     ofname2 = step2(args, ofname1)
 
 if __name__=="__main__":
-    reusable_steps = ["step1","step2","step4"]
+    reusable_steps = ["step1","step2"]
 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("-a", "--args", dest="args", type=str, required=True, help="input arguments for combine")
