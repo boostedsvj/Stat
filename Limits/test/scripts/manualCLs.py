@@ -26,7 +26,8 @@ def runCmd(cmd, log, opt='w'):
 def getOutfile(log):
     ofname = ""
     indicator = "COMBINE_OUTPUT_FILE: "
-    failure = "WARNING: MultiDimFit failed"
+    # MDF and FD have different failure messages
+    failure = ["WARNING: MultiDimFit failed","Fit failed."]
     success = True
     with open(log,'r') as logfile:
         for line in logfile:
@@ -35,7 +36,7 @@ def getOutfile(log):
         
             if indicator in line:
                 ofname = line.rstrip().replace(indicator,"")
-            elif failure in line:
+            elif any(f in line for f in failure):
                 success = False
 
     if len(ofname)==0: raise RuntimeError("Could not find output file name from log: {}".format(log))
@@ -238,6 +239,10 @@ def step3(args, scans):
         if qidx==0: quantiles_at_lower_boundary.append(q)
         if qidx==len(r_data)-1 or qidx==-1: quantiles_at_upper_boundary.append(q)
 
+    # store best fit values
+    limits[-3] = r_data_bestfit
+    limits[-4] = r_asimov_bestfit
+
     # repeat step 2 w/ wider range if this happens
     at_lower_boundary = len(quantiles_at_lower_boundary)>0
     at_upper_boundary = len(quantiles_at_upper_boundary)>0
@@ -312,16 +317,13 @@ def step3(args, scans):
     return limits, at_lower_boundary, at_upper_boundary
 
 def step4(args, limits):
-    # run MDF for each r value to get output tree w/ proper fit params, normalizations, etc.
+    # run MDF for each r value to get output tree w/ proper fit params, normalizations, shapes, etc.
     # include: prefit (bkg-only) as quantile=-2 w/ r=0
     #          bestfit (obs) as quantile=-3
     #          bestfit (asimov) as quantile=-4
     limits[-2] = 0.
-    limits[-3] = 0.
-    limits[-4] = 0.
     
     ofnames = {}
-    index = 0
     no_reuse = "step4" not in args.reuse
     for q, rval in sorted(limits.iteritems()):
         args4 = args.args[:]
@@ -332,8 +334,8 @@ def step4(args, limits):
         else:
             args4 = updateArg(args4, ["--setParameters"], "r={}".format(rval), ',')
             args4 = updateArg(args4, ["--freezeParameters"], "r", ',')
-        args4 = updateArg(args4, ["-n","--name"], "Postfit{}".format(index))
-        cmd4 = "combine -M MultiDimFit {} {} {}".format(extra,args4,args.fitopts)
+        args4 = updateArg(args4, ["-n","--name"], "Postfit{:.3f}".format(q))
+        cmd4 = "combine -M MultiDimFit --saveShapes {} {} {}".format(extra,args4,args.fitopts)
         fprint(cmd4)
         logfname4 = "log_step4q{}_{}.log".format(q,args.name)
         ofname4 = ""
@@ -355,7 +357,6 @@ def step4(args, limits):
             if not success:
                 fprint("WARNING: MultiDimFit failed {} times, giving up".format(retries))
             ofnames[q] = ofname4
-        index += 1
         
     return ofnames
     
@@ -424,7 +425,7 @@ def manualCLs(args):
         if at_lower: count_lower += 1
         if at_upper: count_upper += 1
 
-    # 4. run MDF for each r value to get fit params
+    # 4. run MDF for each r value to get fit params etc.
     fits = []
     if args.fit:
         fits = step4(args, limits)

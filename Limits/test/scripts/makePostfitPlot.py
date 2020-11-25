@@ -11,7 +11,6 @@ input/input_svj_mt_hist_full.txt
 
 options_template = """OPTION
 string+:printsuffix[{psuff}]
-string:exthisto_dir[{hdir}]
 vstring:extra_text[{etxt}]
 vstring:fits[{fitlist}]
 vstring+:chosensets[{signames}]
@@ -21,16 +20,17 @@ string:rootfile[{ofile}]
 
 fit_template = "{fitname}\ts:fn[{fnname}]\tvd:pars[1,{pvals}]\td:yield[{yieldval}]\ts:legname[{legname}]\tin:input[input/input_svj_mt_fit_opt.txt]\tb:legpars[0]\tc:linecolor[{fitcol}]"
 
-set_template = """hist\tmc\t{signamefull}\ts:legname[{legname}]\tc:color[{sigcol}]\ti:linestyle[7]\ti:panel[0]\tvs:fits[]\td:yieldnormval[{signorm}]
-\tbase\text\t{signamefull}\ts:extfilename[{sigfile}]\tvs:exthisto_in[{signamesafe}]\tvs:exthisto_out[MTAK8]"""
+set_template = """hist\tmc\t{signamefull}\ts:legname[{legname}]\tc:color[{sigcol}]\ti:linestyle[7]\ti:panel[0]\tvs:fits[]\t{signorm}
+\tbase\text\t{signamefull}\ts:extfilename[{sigfile}]\ts:exthisto_dir[{hdir}]\tvs:exthisto_in[{signamesafe}]\tvs:exthisto_out[MTAK8]"""
 
 # todo: handle signal-injection toys in legname (& psuff)
-data_template = """hist\tdata\tdata\ti:panel[1]\ts:legname[toy data (no signal)]\tvs:extra_text[{fitleg}]\tb:yieldnorm[0]
-\tbase\text\tdata\ts:extfilename[{dfile}]\tvs:exthisto_in[Bkg_toy]\tvs:exthisto_out[MTAK8]"""
+data_template = """hist\tdata\tdata\ti:panel[1]\ts:legname[toy data (no signal)]\tb:yieldnorm[0]
+\tbase\text\tdata\ts:extfilename[{dfile}]\ts:exthisto_dir[{hdir}]\tvs:exthisto_in[Bkg_toy]\tvs:exthisto_out[MTAK8]"""
 
 quantile_info = {
-    -3: {"legname": "bestfit", "name": "bestfit", "color": "kOrange + 2", "sigcolor": "kMagenta"},
-    -2: {"legname": "b-only", "name": "bonly", "color": "kRed"},
+    -4: {"legname": "asimov", "name": "asimov", "color": "kYellow + 3", "sigcolor": "kCyan + 2"},
+    -3: {"legname": "bestfit", "name": "bestfit", "color": "kOrange + 2", "sigcolor": "kCyan + 2"},
+    -2: {"legname": "b-only", "name": "bonly", "color": "kRed", "sigcolor": "kCyan + 2"},
     -1: {"legname": "postfit (obs)", "name": "postfitobs", "color": "kBlue", "sigcolor": "kCyan + 2"},
 }
 
@@ -48,10 +48,10 @@ region_info = {
     "lowSVJ2": {"alt": 2, "main": 2, "legname": "low-SVJ2"},
 }
 
-def makePostfitPlot(mass, name, method, quantiles, data_file, datacard_dir, combo, region):
+def makePostfitPlot(mass, name, method, quantile, data_file, datacard_dir, combo, region):
     ch = "ch1" if "high" in region else "ch2"
 
-    iname = "input_svj_mt_fit_toy_{region}_{name}_mZprime{mass}.txt".format(region=region,mass=mass,name=name)
+    iname = "input_svj_mt_fit_toy_{region}_{name}_{qname}_mZprime{mass}.txt".format(region=region,mass=mass,name=name,qname=quantile_info[quantile]["name"])
     signame = "SVJ_{}_20_0.3_peak".format(mass)
     signamesafe = "SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(mass)
     rinfo = region_info[region]
@@ -60,10 +60,12 @@ def makePostfitPlot(mass, name, method, quantiles, data_file, datacard_dir, comb
 
     fits = OrderedDict()
     sigs = OrderedDict()
-    for quantile in quantiles:
-        qinfo = quantile_info[quantile]
+    for q in [quantile]:
+        qinfo = quantile_info[q]
 
-        params = getParamsTracked(getFname(mass, name, method, combo), quantile)
+        fname = getFname(mass, name, method, combo)
+        postfname = fname.replace("higgsCombine","multidimfitPostfit{:.3f}".format(q)).replace("{}.".format(method),"")
+        params = getParamsTracked(fname, quantile)
         if len(params)==0: return ""
 
         pfit = {p:v for p,v in params.iteritems() if region in p}
@@ -72,47 +74,57 @@ def makePostfitPlot(mass, name, method, quantiles, data_file, datacard_dir, comb
         if finfo is None:
             ftype = "alt" if any("_alt" in p for p in pfit) else "main"
             finfo = function_info[(ftype,rinfo[ftype])]
-        fname = "{}_{}".format(finfo["name"],qinfo["name"])
+        fitname = "{}_{}".format(finfo["name"],qinfo["name"])
 
-        fits[fname] = fit_template.format(
-            fitname = fname,
+        fits[fitname] = fit_template.format(
+            fitname = fitname,
             fnname = finfo["formula"],
             pvals = ','.join(pvals),
             # yieldval must be multiplied by bin width
             yieldval = str(params["trackedParam_n_exp_final_bin{}_proc_roomultipdf".format(ch)]*100),
-            legname = qinfo["legname"],
+            legname = "{}, {}".format(finfo["legname"],qinfo["legname"]),
             fitcol = qinfo["color"],
         )
 
         # no need to show signal for b-only
-        if qinfo["name"]=="bonly": continue
+#        if qinfo["name"]=="bonly": continue
 
         signamefull = "{}_{}".format(signame,qinfo["name"])
-        legname = "{} (r = {:.2g})".format(signame,params["r"])
+        hdir = "{}_2018".format(region)
+        if qinfo["name"]=="bonly":
+            legname = "{} (r = {:.2g})".format(signame,1)
+            sigfile = "{}/datacard_{}.root".format(datacard_dir,signame)
+            hdirsig = hdir
+            signorm = "b:yieldnorm[0]"
+        else:
+            legname = "{} (r = {:.2g})".format(signame,params["r"])
+            sigfile = "test/{}".format(postfname if signamesafe in postfname else signamesafe+"/"+postfname)
+            hdirsig = "shapes_fit/{}".format(ch)
+            signorm = "d:yieldnormval[{}]".format(params["trackedParam_n_exp_final_bin{}_proc_{}".format(ch,signamesafe)])
 
         sigs[signamefull] = set_template.format(
             signamefull = signamefull,
             legname = legname,
             sigcol = qinfo["sigcolor"],
-            signorm = str(params["trackedParam_n_exp_final_bin{}_proc_{}".format(ch,signamesafe)]),
-            sigfile = "{}/datacard_{}.root".format(datacard_dir,signame),
+            signorm = signorm,
+            sigfile = sigfile,
             signame = signame,
             signamesafe = signamesafe,
+            hdir = hdirsig,
         )
 
     data = data_template.format(
-        fitleg = finfo["legname"],
         dfile = data_file,
+        hdir = hdir,
     )
 
     options = options_template.format(
         # should quantiles be included here?
-        psuff = "_toy_fit_{}_mZprime{}".format(ftype,mass),
-        hdir = "{}_2018".format(region),
+        psuff = "_toy_fit_{}_{}_{}_mZprime{}".format(region,name,quantile_info[quantile]["name"],mass),
         etxt = rinfo["legname"],
         fitlist = ','.join(fits),
         signames = ','.join(sigs),
-        ofile = "test/fit_toy_mZprime{}_{}".format(mass,region),
+        ofile = "test/fit_toy_mZprime{}_{}_{}_{}".format(mass,region,name,quantile_info[quantile]["name"]),
     )
 
     with open(iname,'w') as ifile:
@@ -136,8 +148,8 @@ if __name__=="__main__":
     parser.add_argument("-n", "--name", dest="name", type=str, default="Test", help="test name (higgsCombine[name])")
     parser.add_argument("-M", "--method", dest="method", type=str, default="AsymptoticLimits", help="method name (higgsCombineTest.[method])")
     parser.add_argument("-d", "--data", dest="data", type=str, default="test/trig4_sigfull_datacard.root", help="data file name")
-    parser.add_argument("-D", "--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/", help="datacard location")
-    parser.add_argument("-q", "--quantiles", dest="quantiles", type=float, default=[], nargs='+', help="quantile(s) to plot fits")
+    parser.add_argument("-D", "--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/", help="datacard location (for prefit)")
+    parser.add_argument("-q", "--quantile", dest="quantile", type=float, default=-1, help="quantile to plot fits")
     parser.add_argument("-c", "--combos", dest="combos", type=str, default=[], nargs='+', choices=["cut","bdt"], help="combo(s) to plot")
     args = parser.parse_args()
 
@@ -150,7 +162,7 @@ if __name__=="__main__":
     input_files = []
     for combo,regions in args.combos.iteritems():
         for region in regions:
-            tmp = makePostfitPlot(args.mass,args.name,args.method,args.quantiles,args.data,args.datacards,combo,region)
+            tmp = makePostfitPlot(args.mass,args.name,args.method,args.quantile,args.data,args.datacards,combo,region)
             input_files.append(tmp)
     print ' '.join(input_files)
 
