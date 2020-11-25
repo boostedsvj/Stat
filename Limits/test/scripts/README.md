@@ -28,6 +28,9 @@
 1. Estimate bkg fit parameters, normalizations using median expected from AsymptoticLimits w/ systematics disabled
 2. Rerun AsymptoticLimits (or ManualCLs) w/ parameters, normalizations from step 1 as initial values
 
+## `makePostfitPlot.py`
+* makes input files for [Analysis](https://github.com/kpedro88/Analysis) to plot postfit background and signal, using MultiDimFit output
+
 Some features in these scripts require one of the following Combine branches:
 1. Minor fixes: https://github.com/kpedro88/HiggsAnalysis-CombinedLimit/tree/faster_para_plus
 2. above + ad-hoc procedures to try to improve false minima: https://github.com/kpedro88/HiggsAnalysis-CombinedLimit/tree/faster_para_plus_debug_improve
