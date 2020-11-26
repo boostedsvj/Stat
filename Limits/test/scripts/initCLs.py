@@ -70,7 +70,7 @@ def step2(args, ofname1):
     if not args.dry_run:
         if "step2" not in args.reuse: runCmd(cmd2,logfname2)
         ofname2, _ = getOutfile(logfname2)
-    if args.doprint: fprint(','.join(params[combo]))
+    if args.doprint: fprint(','.join(params_text))
     return ofname2
 
 def initCLs(args):
