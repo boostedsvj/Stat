@@ -29,6 +29,7 @@ parser.add_argument("-j", "--just-hadd", dest="just_hadd", default=False, action
 parser.add_argument("-M", "--manualCLs", dest="manualCLs", default=False, action='store_true', help="use manual CLs algorithm")
 parser.add_argument("-i", "--initCLs", dest="initCLs", default=False, action='store_true', help="use initialized CLs algorithm")
 parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs or init CLs")
+parser.add_argument("--masses", dest="masses", type=int, default=[], nargs="*", help="masses (empty = all)")
 args = parser.parse_args()
 
 pwd = os.getcwd()
@@ -70,6 +71,7 @@ def doLimit(mass):
     }
     setargs = []
     trkargs = []
+    treargs = []
     extargs = ""
     for p,v in params.iteritems():
         setargs.append(p+"="+str(v))
@@ -98,9 +100,11 @@ def doLimit(mass):
     }
     if "Alt" in args.mod:
         trkargs.extend(altparams[combo])
+        treargs.extend(altparams[combo])
         frzargs.extend(fitparams[combo])
     else:
         trkargs.extend(fitparams[combo])
+        treargs.extend(fitparams[combo])
         frzargs.extend(altparams[combo])
 
     if "F12" in args.mod and combo=="cut":
@@ -108,7 +112,9 @@ def doLimit(mass):
         frzargs.extend("highCut_p4_4,highCut_p5_4,lowCut_p3_4,lowCut_p4_4,lowCut_p5_4".split(','))
 
     for ch in ["ch1","ch2"]:
-        trkargs.extend(["n_exp_bin{}_proc_roomultipdf".format(ch),"shapeBkg_roomultipdf_{}__norm".format(ch),"n_exp_final_bin{}_proc_roomultipdf".format(ch),"n_exp_final_bin{}_proc_SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(ch,mass)])
+        normargs = ["n_exp_bin{}_proc_roomultipdf".format(ch),"shapeBkg_roomultipdf_{}__norm".format(ch),"n_exp_final_bin{}_proc_roomultipdf".format(ch),"n_exp_final_bin{}_proc_SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(ch,mass)]
+        trkargs.extend(normargs)
+        treargs.extend(normargs)
         if args.freezeNorm: frzargs.append("shapeBkg_roomultipdf_{}__norm".format(ch))
 
     if "S0" in args.mod:
@@ -117,7 +123,7 @@ def doLimit(mass):
         frzargs.append("rgx{mcstat_.*}")
 
     os.chdir(os.path.join(pwd,signame))
-    cargs = "--setParameters "+','.join(setargs)+" --freezeParameters "+','.join(frzargs)+" --trackParameters "+','.join(trkargs)+" --keyword-value ana="+combo+" -n "+cname
+    cargs = "--setParameters "+','.join(setargs)+" --freezeParameters "+','.join(frzargs)+" --trackParameters "+','.join(trkargs)+" --trackErrors "+','.join(treargs)+" --keyword-value ana="+combo+" -n "+cname
     if "Minfix" in args.mod:
         cargs += " --X-rtd improveFalseMinima"
     if "Robust" in args.mod:
@@ -161,7 +167,8 @@ def doLimit(mass):
 
     return outputs
 
-masses = [
+if len(args.masses)==0:
+    args.masses = [
 1500,
 1700,
 1900,
@@ -183,8 +190,6 @@ masses = [
 5100,
 ]
 
-# masses = [3500]
-
 cname = "Test"
 if len(args.mod)>0: cname += ''.join(args.mod)
 if args.freezeNorm: cname += "Frz"
@@ -199,13 +204,13 @@ for combo,regions in combos.iteritems():
     if not combo in args.regions: continue
     if not args.just_hadd:
         p = Pool(args.npool if not args.dry_run else 1)
-        for outputs in p.imap_unordered(doLimit, masses):
+        for outputs in p.imap_unordered(doLimit, args.masses):
             fprint('\n'.join(outputs))
         p.close()
         p.join()
 
     outfiles = []
-    for mass in masses:
+    for mass in args.masses:
         signame = "SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(mass)
         mname = "ManualCLs" if args.manualCLs else "AsymptoticLimits"
         sname = "Step2" if args.initCLs and not args.manualCLs else ""

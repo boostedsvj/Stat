@@ -2,19 +2,19 @@ import os,sys
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from pprint import pprint
 
-def getBranches(tree, match="", exact=False):
+def getBranches(tree, matches=None, exact=False):
     import ROOT as r
+    if not exact and not isinstance(matches,list): matches = [matches]
+    elif exact and isinstance(matches,list): matches = matches[0]
     branches = []
     for b in tree.GetListOfBranches():
-        leaf = b.GetLeaf(b.GetName())
-        if len(match)==0 or (exact and match==b.GetName()) or (not exact and match in b.GetName()):
-            branches.append(b.GetName())
+        bname = b.GetName()
+        leaf = b.GetLeaf(bname)
+        if matches is None or (exact and matches==b.GetName()) or (not exact and all(m in bname for m in matches)):
+            branches.append(bname)
     return branches
 
-def getParamsAuto(tree, region):
-    return sorted(getBranches(tree, region))
-
-# retained for comparison w/ automatic approach above
+# retained for comparison w/ automatic approach using above
 def getParams(fn, region, prefix="trackedParams_"):
     params = dict(
         main = dict(
@@ -44,7 +44,7 @@ def getFname(mass, name, method, combo, quiet=True):
     return fname
 
 def getParamsText(params):
-    return ["{}={}".format(p.replace('trackedParam_',''),v) for p,v in sorted(params.iteritems()) if any(x in p for x in ['high','low','shapeBkg'])]
+    return ["{}={}".format(p.replace('trackedParam_','').replace('trackedError_',''),v) for p,v in sorted(params.iteritems()) if any(x in p for x in ['high','low','shapeBkg'])]
 
 def getAll(mass, name, method, quantile, do_set, do_param, quiet):
     combos = {
@@ -63,7 +63,7 @@ def getAll(mass, name, method, quantile, do_set, do_param, quiet):
         # todo: restore do_param case (consider min and max from all expected limit values, print in gaussian constrained param format)
     return results
 
-def getParamsTracked(fname, quantile):
+def getParamsTracked(fname, quantile, includeParam=True, includeErr=False):
     import ROOT as r
 
     condition = "abs(quantileExpected-{})<0.001".format(quantile)
@@ -72,17 +72,20 @@ def getParamsTracked(fname, quantile):
     file = r.TFile.Open(fname)
     tree = file.Get("limit")
 
+    matches = []
+    if includeParam and not includeErr: matches = ["trackedParam"]
+    elif not includeParam and includeErr: matches = ["trackedError"]
     params = []
     # background normalization factors
-    params.extend(getBranches(tree, "shapeBkg"))
+    params.extend(getBranches(tree, matches+["shapeBkg"]))
     # background & signal final normalizations
-    params.extend(getBranches(tree, "n_exp_final"))
+    params.extend(getBranches(tree, matches+["n_exp_final"]))
     # signal strength (from MDF)
     params.extend(getBranches(tree, "r", exact=True))
 
     for region in ["high","low"]:
         # background fit parameters
-        params.extend(getParamsAuto(tree, region))
+        params.extend(sorted(getBranches(tree, matches+[region])))
 
     # deliver dict of params:values
     n = tree.Draw(':'.join(params),condition,"goff")
