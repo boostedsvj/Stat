@@ -24,7 +24,7 @@ set_template = """hist\tmc\t{signamefull}\ts:legname[{legname}]\tc:color[{sigcol
 \tbase\text\t{signamefull}\ts:extfilename[{sigfile}]\ts:exthisto_dir[{hdir}]\tvs:exthisto_in[{signamesafe}]\tvs:exthisto_out[MTAK8]"""
 
 # todo: handle signal-injection toys in legname (& psuff)
-data_template = """hist\tdata\tdata\ti:panel[1]\ts:legname[toy data (no signal)]\tb:yieldnorm[0]
+data_template = """hist\tdata\tdata\ti:panel[1]\ts:legname[toy data {inj}]\tb:yieldnorm[0]
 \tbase\text\tdata\ts:extfilename[{dfile}]\ts:exthisto_dir[{hdir}]\tvs:exthisto_in[Bkg_toy]\tvs:exthisto_out[MTAK8]"""
 
 quantile_info = {
@@ -48,7 +48,7 @@ region_info = {
     "lowSVJ2": {"alt": 2, "main": 2, "legname": "low-SVJ2"},
 }
 
-def makePostfitPlot(mass, name, method, quantile, data_file, datacard_dir, combo, region):
+def makePostfitPlot(mass, name, method, quantile, data_file, datacard_dir, injected, combo, region):
     ch = "ch1" if "high" in region else "ch2"
 
     iname = "input_svj_mt_fit_toy_{region}_{name}_{qname}_mZprime{mass}.txt".format(region=region,mass=mass,name=name,qname=quantile_info[quantile]["name"])
@@ -116,6 +116,7 @@ def makePostfitPlot(mass, name, method, quantile, data_file, datacard_dir, combo
     data = data_template.format(
         dfile = data_file,
         hdir = hdir,
+        inj = "(no signal)" if injected==0 else "(m_{{Z'}} = {:.1f} TeV)".format(float(injected)/1000.)
     )
 
     options = options_template.format(
@@ -148,6 +149,7 @@ if __name__=="__main__":
     parser.add_argument("-n", "--name", dest="name", type=str, default="Test", help="test name (higgsCombine[name])")
     parser.add_argument("-M", "--method", dest="method", type=str, default="AsymptoticLimits", help="method name (higgsCombineTest.[method])")
     parser.add_argument("-d", "--data", dest="data", type=str, default="test/trig4_sigfull_datacard.root", help="data file name")
+    parser.add_argument("-i", "--injected", dest="injected", type=int, default=0, help="injected Zprime mass")
     parser.add_argument("-D", "--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/", help="datacard location (for prefit)")
     parser.add_argument("-q", "--quantile", dest="quantile", type=float, default=-1, help="quantile to plot fits")
     parser.add_argument("-c", "--combos", dest="combos", type=str, default=[], nargs='+', choices=["cut","bdt"], help="combo(s) to plot")
@@ -162,7 +164,7 @@ if __name__=="__main__":
     input_files = []
     for combo,regions in args.combos.iteritems():
         for region in regions:
-            tmp = makePostfitPlot(args.mass,args.name,args.method,args.quantile,args.data,args.datacards,combo,region)
+            tmp = makePostfitPlot(args.mass,args.name,args.method,args.quantile,args.data,args.datacards,args.injected,combo,region)
             input_files.append(tmp)
     print ' '.join(input_files)
 
