@@ -149,7 +149,7 @@ def doLimit(mass):
         extra = args.extra[:]
         # to use initCLs and manualCLs together, specify params to extract
         if args.initCLs:
-            extra += " -i trackedParam shapeBkg -i trackedParam high -i trackedParam low"
+            extra += " -i shapeBkg high low"
         command = 'python ../manualCLs.py {} -a "{}" -n {}'.format(extra,cargs,combo+"_"+cname)
     elif args.initCLs:
         command = 'python ../initCLs.py {} -a "{}" -n {}'.format(args.extra,cargs,combo+"_"+cname)

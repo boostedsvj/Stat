@@ -82,7 +82,7 @@ def replaceMulti(string,replacements):
         string = string.replace(old,new)
     return string
 
-def getParams(dry_run, ofname1, match_groups):
+def getParams(dry_run, ofname1, pnames, matches=[]):
     if dry_run: return
 
     import ROOT as r
@@ -94,13 +94,37 @@ def getParams(dry_run, ofname1, match_groups):
     limit1 = file1.Get("limit")
 
     params = []
-    for matches in match_groups:
-        params.extend(getBranches(limit1, matches))
+    for p in pnames:
+        params.extend(getBranches(limit1, matches+[p]))
 
     # deliver string of param=value
     limit1.Draw(':'.join(params),condition,"goff")
     results = {p:limit1.GetVal(i)[0] for i,p in enumerate(params)}
-    return ','.join(["{}={}".format(replaceMulti(p,{'trackedParam_':'','trackedError_':''}),v) for p,v in sorted(results.iteritems())])
+    return results
+
+def getParamsTxt(params):
+    return ','.join(["{}={}".format(replaceMulti(p,{'trackedParam_':'','trackedError_':''}),v) for p,v in sorted(params.iteritems())])
+
+def getParamConstraints(params,errors):
+    constraints = {}
+    psuff = 'trackedParam_'
+    esuff = 'trackedError_'
+    for ename in errors:
+        name = ename.replace(esuff,'')
+        pname = psuff+name
+        constraints[name] = (params[pname]-errors[ename],params[pname]+errors[ename])
+    return constraints
+
+def getConstraintsTxt(constraints):
+    return ':'.join(["{}={},{}".format(p,v[0],v[1]) for p,v in sorted(constraints.iteritems())])
+
+def handleMoreArgs(args, more_args):
+    if more_args is not None:
+        params = more_args[0]
+        constraints = more_args[1]
+        if len(params)>0: args = updateArg(args, ['--setParameters'], params, ',')
+        if len(constraints)>0: args = updateArg(args, ['--setParameterRanges'], constraints, ':')
+    return args
 
 def step1(args):
     # run AsymptoticLimits w/ nuisances disabled
@@ -115,11 +139,12 @@ def step1(args):
         ofname1, _ = getOutfile(logfname1)
     return ofname1
 
-def step2impl(args, name, lname, rmin, rmax, npts, extra="", params=""):
+def step2impl(args, name, lname, rmin, rmax, npts, extra="", more_args=None):
     # run MDF likelihood scan
     args2 = updateArg(args.args, ["-n","--name"], name)
-    if len(params)>0: args2 = updateArg(args2, ["--setParameters"], params, ',')
-    cmd2 = "combine -M MultiDimFit --redefineSignalPOIs r --setParameterRanges r={},{} --algo grid --points {} --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --alignEdges 1 --saveNLL {} {} {}".format(rmin,rmax,npts,extra,args2,args.fitopts)
+    args2 = handleMoreArgs(args2,more_args)
+    args2 = updateArg(args2, ['--setParameterRanges'], "r={},{}".format(rmin,rmax), ':')
+    cmd2 = "combine -M MultiDimFit --redefineSignalPOIs r --algo grid --points {} --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --alignEdges 1 --saveNLL {} {} {}".format(npts,extra,args2,args.fitopts)
     fprint(cmd2)
 
     logfname2 = "log_{}_{}.log".format(lname,args.name)
@@ -135,16 +160,23 @@ def step2(args, ofname1, count_lower, count_upper):
 
     # optional: initialize parameter values from step1 (initCLs)
     init_args = ""
+    constraint_args = ""
     if len(args.initCLs)>0:
-        init_args = getParams(args.dry_run,ofname1,args.initCLs)
+        params = getParams(args.dry_run,ofname1,args.initCLs,matches=['trackedParam'])
+        init_args = getParamsTxt(params)
+        if len(args.initConstraints)>0:
+            errors = getParams(args.dry_run,ofname1,args.initConstraints,matches=['trackedError'])
+            constraints = getParamConstraints(params,errors)
+            constraint_args = getConstraintsTxt(constraints)
+    more_args = (init_args,constraint_args)
 
     # observed
-    ofname2d = step2impl(args,"Observed","step2d",rmin,rmax,npts,params=init_args)
+    ofname2d = step2impl(args,"Observed","step2d",rmin,rmax,npts,more_args=more_args)
 
     # expected (asimov)
-    ofname2a = step2impl(args,"Asimov","step2a",rmin,rmax,npts,params=init_args,extra="-t -1 --toysFreq")
+    ofname2a = step2impl(args,"Asimov","step2a",rmin,rmax,npts,more_args=more_args,extra="-t -1 --toysFreq")
 
-    return ofname2d, ofname2a
+    return (ofname2d, ofname2a), more_args
 
 def step3(args, scans):
     # based on https://gitlab.cern.ch/cms-hcg/cadi/hig-19-003/-/blob/master/HJMINLO/plot_cls.py
@@ -360,7 +392,7 @@ def step3(args, scans):
 
     return limits, at_lower_boundary, at_upper_boundary
 
-def step4(args, limits):
+def step4(args, limits, more_args):
     # run MDF for each r value to get output tree w/ proper fit params, normalizations, shapes, etc.
     # include: prefit (bkg-only) as quantile=-2 w/ r=0
     #          bestfit (obs) as quantile=-3
@@ -379,6 +411,7 @@ def step4(args, limits):
             args4 = updateArg(args4, ["--setParameters"], "r={}".format(rval), ',')
             args4 = updateArg(args4, ["--freezeParameters"], "r", ',')
         args4 = updateArg(args4, ["-n","--name"], "Postfit{:.3f}".format(q))
+        args4 = handleMoreArgs(args4,more_args)
         cmd4 = "combine -M MultiDimFit --saveShapes {} {} {}".format(extra,args4,args.fitopts)
         fprint(cmd4)
         logfname4 = "log_step4q{}_{}.log".format(q,args.name)
@@ -460,9 +493,10 @@ def manualCLs(args):
     at_upper = True
     count_lower = 0
     count_upper = 0
+    more_args = None
     while at_lower or at_upper:
         # 2. run likelihood scans
-        scans = step2(args, ofname1, count_lower, count_upper)
+        scans, more_args = step2(args, ofname1, count_lower, count_upper)
 
         # 3. compute CLs from likelihood scans
         limits, at_lower, at_upper = step3(args, scans)
@@ -472,7 +506,7 @@ def manualCLs(args):
     # 4. run MDF for each r value to get fit params etc.
     fits = []
     if args.fit:
-        fits = step4(args, limits)
+        fits = step4(args, limits, more_args)
     
     # 5. make new limit tree from step 4 MDF runs
     step5(args, limits, fits, ofname1)
@@ -488,7 +522,8 @@ if __name__=="__main__":
     parser.add_argument("-r", "--reuse", dest="reuse", type=str, default=[], nargs='*', choices=reusable_steps + ["all"], help="reuse Combine results from specified steps")
     parser.add_argument("-f", "--fit", dest="fit", default=False, action='store_true', help="run MDF for prefit and postfit")
     parser.add_argument("-x", "--extra", dest="extra", default=False, action='store_true', help="enable extra fit options for MDF")
-    parser.add_argument("-i", "--initCLs", dest="initCLs", type=str, action='append', nargs='*', help="use initCLs for specified parameter group(s)")
+    parser.add_argument("-i", "--initCLs", dest="initCLs", type=str, default=[], nargs='*', help="use initCLs for specified parameters")
+    parser.add_argument("-I", "--initConstraints", dest="initConstraints", type=str, default=[], nargs='*', help="use errors from initCLs to constrain ranges for specified parameters")
     args = parser.parse_args()
 
     if "all" in args.reuse: args.reuse = reusable_steps[:]
