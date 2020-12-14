@@ -65,6 +65,43 @@ def getRange(dry_run, ofname1, count_lower, count_upper):
 
     return rmin,rmax,npts
 
+def getBranches(tree, matches=None, exact=False):
+    import ROOT as r
+    if not exact and not isinstance(matches,list): matches = [matches]
+    elif exact and isinstance(matches,list): matches = matches[0]
+    branches = []
+    for b in tree.GetListOfBranches():
+        bname = b.GetName()
+        leaf = b.GetLeaf(bname)
+        if matches is None or (exact and matches==b.GetName()) or (not exact and all(m in bname for m in matches)):
+            branches.append(bname)
+    return branches
+
+def replaceMulti(string,replacements):
+    for old,new in replacements.iteritems():
+        string = string.replace(old,new)
+    return string
+
+def getParams(dry_run, ofname1, match_groups):
+    if dry_run: return
+
+    import ROOT as r
+
+    quantile = 0.5
+    condition = "abs(quantileExpected-{})<0.001".format(quantile)
+
+    file1 = r.TFile.Open(ofname1)
+    limit1 = file1.Get("limit")
+
+    params = []
+    for matches in match_groups:
+        params.extend(getBranches(limit1, matches))
+
+    # deliver string of param=value
+    limit1.Draw(':'.join(params),condition,"goff")
+    results = {p:limit1.GetVal(i)[0] for i,p in enumerate(params)}
+    return ','.join(["{}={}".format(replaceMulti(p,{'trackedParam_':'','trackedError_':''}),v) for p,v in sorted(results.iteritems())])
+
 def step1(args):
     # run AsymptoticLimits w/ nuisances disabled
     args1 = updateArg(args.args, ["--freezeParameters"], "allConstrainedNuisances", ',')
@@ -78,11 +115,13 @@ def step1(args):
         ofname1, _ = getOutfile(logfname1)
     return ofname1
 
-def step2impl(args, name, lname, rmin, rmax, npts, extra=""):
+def step2impl(args, name, lname, rmin, rmax, npts, extra="", params=""):
     # run MDF likelihood scan
     args2 = updateArg(args.args, ["-n","--name"], name)
+    if len(params)>0: args2 = updateArg(args2, ["--setParameters"], params, ',')
     cmd2 = "combine -M MultiDimFit --redefineSignalPOIs r --setParameterRanges r={},{} --algo grid --points {} --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --alignEdges 1 --saveNLL {} {} {}".format(rmin,rmax,npts,extra,args2,args.fitopts)
     fprint(cmd2)
+
     logfname2 = "log_{}_{}.log".format(lname,args.name)
     ofname2 = ""
     if not args.dry_run:
@@ -94,12 +133,17 @@ def step2(args, ofname1, count_lower, count_upper):
     # get rmin, rmax from step1
     rmin, rmax, npts = getRange(args.dry_run,ofname1,count_lower,count_upper)
 
+    # optional: initialize parameter values from step1 (initCLs)
+    init_args = ""
+    if len(args.initCLs)>0:
+        init_args = getParams(args.dry_run,ofname1,args.initCLs)
+
     # observed
-    ofname2d = step2impl(args,"Observed","step2d",rmin,rmax,npts)
+    ofname2d = step2impl(args,"Observed","step2d",rmin,rmax,npts,params=init_args)
 
     # expected (asimov)
-    ofname2a = step2impl(args,"Asimov","step2a",rmin,rmax,npts,"-t -1 --toysFreq")
-    
+    ofname2a = step2impl(args,"Asimov","step2a",rmin,rmax,npts,params=init_args,extra="-t -1 --toysFreq")
+
     return ofname2d, ofname2a
 
 def step3(args, scans):
@@ -330,7 +374,7 @@ def step4(args, limits):
         extra = ""
         if q==-3 or q==-4:
             extra = "--X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --saveNLL"
-            if q==-4: extra += " -t -1 --toysFreq"
+            if q==-4: extra += " -t -1 --toysFreq --saveToys"
         else:
             args4 = updateArg(args4, ["--setParameters"], "r={}".format(rval), ',')
             args4 = updateArg(args4, ["--freezeParameters"], "r", ',')
@@ -444,6 +488,7 @@ if __name__=="__main__":
     parser.add_argument("-r", "--reuse", dest="reuse", type=str, default=[], nargs='*', choices=reusable_steps + ["all"], help="reuse Combine results from specified steps")
     parser.add_argument("-f", "--fit", dest="fit", default=False, action='store_true', help="run MDF for prefit and postfit")
     parser.add_argument("-x", "--extra", dest="extra", default=False, action='store_true', help="enable extra fit options for MDF")
+    parser.add_argument("-i", "--initCLs", dest="initCLs", type=str, action='append', nargs='*', help="use initCLs for specified parameter group(s)")
     args = parser.parse_args()
 
     if "all" in args.reuse: args.reuse = reusable_steps[:]

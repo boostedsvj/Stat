@@ -146,16 +146,11 @@ def doLimit(mass):
     # run combine
     cargs += " -d "+dcfname
     if args.manualCLs:
-        ivals = ""
-        # to use initCLs and manualCLs together, extract initial param values from initCLs (skip step2) and pass to manualCLs
+        extra = args.extra[:]
+        # to use initCLs and manualCLs together, specify params to extract
         if args.initCLs:
-            icommand = 'python ../initCLs.py {} -a "{}" -n {}'.format("-p -r step2",cargs,combo+"_"+cname.replace("Manual",""))
-            outputs.append(icommand)
-            if not args.dry_run:
-                outputs.append(runCmd(icommand))
-                ivals = outputs[-1].splitlines()[-1]
-                cargs = cargs.replace("--setParameters ","--setParameters "+ivals+',')
-        command = 'python ../manualCLs.py {} -a "{}" -n {}'.format(args.extra,cargs,combo+"_"+cname)
+            extra += " -i trackedParam shapeBkg -i trackedParam high -i trackedParam low"
+        command = 'python ../manualCLs.py {} -a "{}" -n {}'.format(extra,cargs,combo+"_"+cname)
     elif args.initCLs:
         command = 'python ../initCLs.py {} -a "{}" -n {}'.format(args.extra,cargs,combo+"_"+cname)
     else:
