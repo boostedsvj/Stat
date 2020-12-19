@@ -46,8 +46,9 @@ vals = defaultdict(list)
 errs = defaultdict(list)
 for mass in masses:
     fname = getFname(mass, args.name, args.method, args.combo)
-    params = getParamsTracked(fname, args.quantile)
-    eparams = getParamsTracked(fname, args.quantile, includeParam=False, includeErr=True)
+    extraCondition = "abs(trackedParam_mZprime-{})<0.01".format(mass)
+    params = getParamsTracked(fname, args.quantile, extraCondition=extraCondition)
+    eparams = getParamsTracked(fname, args.quantile, includeParam=False, includeErr=True, extraCondition=extraCondition)
     for p in params:
         pname = p.replace("trackedParam_","")
         if not "Cut" in p and not "SVJ2" in p: continue

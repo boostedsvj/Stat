@@ -63,10 +63,11 @@ def getAll(mass, name, method, quantile, do_set, do_param, quiet):
         # todo: restore do_param case (consider min and max from all expected limit values, print in gaussian constrained param format)
     return results
 
-def getParamsTracked(fname, quantile, includeParam=True, includeErr=False):
+def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extraCondition=""):
     import ROOT as r
 
     condition = "abs(quantileExpected-{})<0.001".format(quantile)
+    if len(extraCondition)>0: condition += "&&{}".format(extraCondition)
     results = {}
     if not os.path.exists(fname): return results
     file = r.TFile.Open(fname)
