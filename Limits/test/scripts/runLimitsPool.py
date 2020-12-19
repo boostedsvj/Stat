@@ -26,11 +26,15 @@ parser.add_argument("-D", "--dry-run", dest="dry_run", default=False, action='st
 parser.add_argument("-f", "--freezeNorm", dest="freezeNorm", default=False, action="store_true", help="freeze bkg normalization to data")
 parser.add_argument("-m", "--mod", dest="mod", type=str, default=[], choices=["F12","Alt","Minfix","Robust","S0","Nostat"], nargs="*", help="modification(s)")
 parser.add_argument("-j", "--just-hadd", dest="just_hadd", default=False, action="store_true", help="don't run any combine commands, just hadd")
+parser.add_argument("--no-hadd", dest="no_hadd", default=False, action="store_true", help="don't hadd")
 parser.add_argument("-M", "--manualCLs", dest="manualCLs", default=False, action='store_true', help="use manual CLs algorithm")
 parser.add_argument("-i", "--initCLs", dest="initCLs", default=False, action='store_true', help="use initialized CLs algorithm")
 parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs or init CLs")
 parser.add_argument("--masses", dest="masses", type=int, default=[], nargs="*", help="masses (empty = all)")
+parser.add_argument("-R", "--reparam", dest="reparam", default=False, action='store_true', help="use reparameterized alt fns")
 args = parser.parse_args()
+
+if not "Alt" in args.mod: args.reparam = False
 
 pwd = os.getcwd()
 
@@ -129,9 +133,10 @@ def doLimit(mass):
     if "Robust" in args.mod:
         cargs += " --X-rtd allowRobustBisection1"
     datacards = []
+    reparam_txt = "_reparam" if args.reparam else ""
     for region in regions:
-        datacards.append(signame+"_{}_2018_template_bias_toy.txt".format(region))
-    dcfname = "datacard_{}_{}.txt".format(mass,combo)
+        datacards.append(signame+"_{}_2018_template_bias_toy{}.txt".format(region,reparam_txt))
+    dcfname = "datacard_{}_{}{}.txt".format(mass,combo,reparam_txt)
 
     outputs = []
     fprint("Calculating limit for {}...".format(mass))
@@ -190,6 +195,8 @@ if len(args.mod)>0: cname += ''.join(args.mod)
 if args.freezeNorm: cname += "Frz"
 if args.manualCLs: cname += "Manual"
 if args.initCLs: cname += "Init"
+if "-b" in args.extra: cname += "Bonly"
+if args.reparam: cname += "Reparam"
 
 combos = {
 "cut": ["highCut","lowCut"],
@@ -226,8 +233,9 @@ for combo,regions in combos.iteritems():
         else: fprint("Warning: {} limit for mZprime = {} did not converge".format(combo, mass))
 
     # combine outfiles
-    os.chdir(pwd)
-    outname = "limit_"+combo+cname[4:]+".root"
-    command = "hadd -f2 "+outname+''.join(" "+ofn for ofn in outfiles)
-    fprint(command)
-    if not args.dry_run: os.system(command)
+    if not args.no_hadd:
+        os.chdir(pwd)
+        outname = "limit_"+combo+cname[4:]+".root"
+        command = "hadd -f2 "+outname+''.join(" "+ofn for ofn in outfiles)
+        fprint(command)
+        if not args.dry_run: os.system(command)
