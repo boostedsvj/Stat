@@ -40,8 +40,7 @@ combos = {
 "bdt": ["highSVJ2","lowSVJ2"],
 }
 
-x = array('d', masses)
-
+actual_masses = []
 vals = defaultdict(list)
 errs = defaultdict(list)
 for mass in masses:
@@ -49,6 +48,7 @@ for mass in masses:
     extraCondition = "abs(trackedParam_mZprime-{})<0.01".format(mass)
     params = getParamsTracked(fname, args.quantile, extraCondition=extraCondition)
     eparams = getParamsTracked(fname, args.quantile, includeParam=False, includeErr=True, extraCondition=extraCondition)
+    if len(params)>0: actual_masses.append(mass)
     for p in params:
         pname = p.replace("trackedParam_","")
         if not "Cut" in p and not "SVJ2" in p: continue
@@ -56,6 +56,7 @@ for mass in masses:
         errs[pname].append(eparams[p.replace("trackedParam_","trackedError_")])
 
 # make graphs
+x = array('d', actual_masses)
 oname = "params_vs_mass_{}_{}_q{}_{}".format(args.name,args.method,args.quantile,args.combo)
 import ROOT as r
 if args.batch: r.gROOT.SetBatch(True)
@@ -72,7 +73,7 @@ for region in combos[args.combo]:
         y = array('d', vals[p])
         ye = array('d', errs[p])
         # hack to ignore error bars in axis
-        gax = r.TGraph(len(masses),x,y)
+        gax = r.TGraph(len(actual_masses),x,y)
         gax.SetMarkerStyle(20)
         gax.GetXaxis().SetTitle("m_{Z'} [GeV]")
         gax.GetYaxis().SetTitle(p)
