@@ -29,7 +29,7 @@ parser.add_argument("-j", "--just-hadd", dest="just_hadd", default=False, action
 parser.add_argument("--no-hadd", dest="no_hadd", default=False, action="store_true", help="don't hadd")
 parser.add_argument("-M", "--manualCLs", dest="manualCLs", default=False, action='store_true', help="use manual CLs algorithm")
 parser.add_argument("-i", "--initCLs", dest="initCLs", default=False, action='store_true', help="use initialized CLs algorithm")
-parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs or init CLs")
+parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs")
 parser.add_argument("--masses", dest="masses", type=int, default=[], nargs="*", help="masses (empty = all)")
 parser.add_argument("-R", "--reparam", dest="reparam", default=False, action='store_true', help="use reparameterized alt fns")
 args = parser.parse_args()
@@ -156,8 +156,6 @@ def doLimit(mass):
         if args.initCLs:
             extra += " -i shapeBkg high low"
         command = 'python ../manualCLs.py {} -a "{}" -n {}'.format(extra,cargs,combo+"_"+cname)
-    elif args.initCLs:
-        command = 'python ../initCLs.py {} -a "{}" -n {}'.format(args.extra,cargs,combo+"_"+cname)
     else:
         command = "combine -M AsymptoticLimits "+cargs
     outputs.append(command)
@@ -193,9 +191,10 @@ if len(args.masses)==0:
 cname = "Test"
 if len(args.mod)>0: cname += ''.join(args.mod)
 if args.freezeNorm: cname += "Frz"
-if args.manualCLs: cname += "Manual"
+if args.manualCLs and not "-A" in args.extra: cname += "Manual"
 if args.initCLs: cname += "Init"
 if "-b" in args.extra: cname += "Bonly"
+if "-s" in args.extra: cname += "Syst"
 if args.reparam: cname += "Reparam"
 
 combos = {
@@ -214,8 +213,8 @@ for combo,regions in combos.iteritems():
     outfiles = []
     for mass in args.masses:
         signame = "SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(mass)
-        mname = "ManualCLs" if args.manualCLs else "AsymptoticLimits"
-        sname = "Step2" if args.initCLs and not args.manualCLs else ""
+        mname = "ManualCLs" if args.manualCLs and not "-A" in args.extra else "AsymptoticLimits"
+        sname = "StepA" if args.manualCLs and "-A" in args.extra else ""
         fname = signame+"/higgsCombine"+sname+cname+"."+mname+".mH120.ana"+combo+".root"
         append = False
         if args.dry_run:

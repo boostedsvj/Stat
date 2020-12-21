@@ -42,12 +42,13 @@ def getOutfile(log):
     if len(ofname)==0: raise RuntimeError("Could not find output file name from log: {}".format(log))
     return ofname, success
 
-def getRange(dry_run, ofname1, count_lower, count_upper):
+def getRange(dry_run, ofname1, nuisances, count_lower, count_upper):
     # get r range
     # (default vals provided for dryrun printouts)
     rmin = 0.
     rmax = 10.
     factor = 10.
+    if nuisances: factor = 2.
     factor_min = factor*pow(2,count_lower)
     factor_max = factor*pow(2,count_upper)
     npts = 100
@@ -152,19 +153,22 @@ def step0(args):
         ofname0, _ = getOutfile(logfname0)
     return ofname0
 
-def step1(args, init_args):
-    # run AsymptoticLimits w/ nuisances disabled
-    args1 = updateArg(args.args, ["--freezeParameters"], "allConstrainedNuisances", ',')
-    args1 = updateArg(args1, ["-n","--name"], "Step1")
+def step1(args, init_args, nuisances=False, stepname="Step1"):
+    # run AsymptoticLimits w/ nuisances disabled (default)
+    args1 = updateArg(args.args, ["-n","--name"], stepname)
+    if not nuisances: args1 = updateArg(args1, ["--freezeParameters"], "allConstrainedNuisances", ',')
     args1 = handleInitArgs(args1,init_args)
     cmd1 = "combine -M AsymptoticLimits "+args1
     fprint(cmd1)
-    logfname1 = "log_step1_{}.log".format(args.name)
+    logfname1 = "log_{}_{}.log".format(stepname[0].lower()+stepname[1:],args.name)
     ofname1 = ""
     if not args.dry_run:
         if "step1" not in args.reuse: runCmd(cmd1,logfname1)
         ofname1, _ = getOutfile(logfname1)
     return ofname1
+
+def stepA(args, init_args):
+    return step1(args, init_args, True, "StepA")
 
 def step2impl(args, name, lname, rmin, rmax, npts, init_args, extra=""):
     # run MDF likelihood scan
@@ -183,7 +187,7 @@ def step2impl(args, name, lname, rmin, rmax, npts, init_args, extra=""):
 
 def step2(args, ofname1, init_args, count_lower, count_upper):
     # get rmin, rmax from step1
-    rmin, rmax, npts = getRange(args.dry_run,ofname1,count_lower,count_upper)
+    rmin, rmax, npts = getRange(args.dry_run,ofname1,args.syst,count_lower,count_upper)
 
     # observed
     ofname2d = step2impl(args,"Observed","step2d",rmin,rmax,npts,init_args)
@@ -506,9 +510,15 @@ def manualCLs(args):
         init_args = getInitArgs(args,ofname0,-1)
 
     # 1. estimate r range (& params for initCLs)
-    ofname1 = step1(args, init_args)
-    if len(args.initCLs)>0 and init_args is None:
-        init_args = getInitArgs(args,ofname1,0.5)
+    if not (args.bonly and args.asymptotic):
+        ofname1 = step1(args, init_args, args.syst)
+        if len(args.initCLs)>0 and init_args is None:
+            init_args = getInitArgs(args,ofname1,0.5)
+
+    # alternate path: just do asymptotic and exit
+    if args.asymptotic:
+        ofnameA = stepA(args, init_args)
+        return
 
     # repeat steps 2 and 3 if boundaries are hit
     # todo: add option to "refine" (smaller range)
@@ -546,8 +556,10 @@ if __name__=="__main__":
     parser.add_argument("-x", "--extra", dest="extra", default=False, action='store_true', help="enable extra fit options for MDF")
     parser.add_argument("-i", "--initCLs", dest="initCLs", type=str, default=[], nargs='*', help="use initCLs for specified parameters")
     parser.add_argument("-b", "--bonly", dest="bonly", default=False, action="store_true", help="use b-only fit for initCLs")
+    parser.add_argument("-s", "--syst", dest="syst", default=False, action="store_true", help="enable systematics for step1")
     parser.add_argument("-I", "--initConstraints", dest="initConstraints", type=str, default=[], nargs='*', help="use errors from initCLs to constrain ranges for specified parameters")
     parser.add_argument("--robustHesse", dest="robustHesse", default=False, action='store_true', help="enable robustHesse for MDF")
+    parser.add_argument("-A", "--asymptotic", dest="asymptotic", default=False, action="store_true", help="just run AsymptoticLimits after init step")
     args = parser.parse_args()
 
     if "all" in args.reuse: args.reuse = reusable_steps[:]

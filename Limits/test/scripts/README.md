@@ -16,17 +16,13 @@
 
 ## `manualCLs.py`
 * "manual" implementation of asymptotic CLs procedure using likelihood scans:
-1. Estimate r range using AsymptoticLimits w/ systematics disabled
+0. Estimate initial parameter values using b-only fit (MultiDimFit w/ r=0)
+1. Estimate r range using AsymptoticLimits (w/ systematics disabled or enabled)
 2. Run likelihood scans using MultiDimFit
 3. Compute CLs values (can also make diagnostic plots)
 4. Optional: do MultiDimFit for each quantile r value (for prefit/postfit plots)
 5. Make new `limit` tree w/ results from step 3 or 4
-* Combine output (steps 1,2,4) can be reused when rerunning command
-
-## `initCLs.py`
-* AsymptoticLimits w/ better initialization:
-1. Estimate bkg fit parameters, normalizations using median expected from AsymptoticLimits w/ systematics disabled
-2. Rerun AsymptoticLimits (or ManualCLs) w/ parameters, normalizations from step 1 as initial values
+* Combine output (steps 0,1,2,4) can be reused when rerunning command
 
 ## `makePostfitPlot.py`
 * makes input files for [Analysis](https://github.com/kpedro88/Analysis) to plot postfit background and signal, using MultiDimFit output
