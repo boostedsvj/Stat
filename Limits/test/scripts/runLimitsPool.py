@@ -32,6 +32,7 @@ parser.add_argument("-i", "--initCLs", dest="initCLs", default=False, action='st
 parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs")
 parser.add_argument("--masses", dest="masses", type=int, default=[], nargs="*", help="masses (empty = all)")
 parser.add_argument("-R", "--reparam", dest="reparam", default=False, action='store_true', help="use reparameterized alt fns")
+parser.add_argument("-N", "--name", dest="name", type=str, default="Test", help="name for combine files")
 args = parser.parse_args()
 
 if not "Alt" in args.mod: args.reparam = False
@@ -188,7 +189,7 @@ if len(args.masses)==0:
 5100,
 ]
 
-cname = "Test"
+cname = args.name[:]
 if len(args.mod)>0: cname += ''.join(args.mod)
 if args.freezeNorm: cname += "Frz"
 if args.manualCLs and not "-A" in args.extra: cname += "Manual"
