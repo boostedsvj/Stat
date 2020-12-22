@@ -42,14 +42,13 @@ def getOutfile(log):
     if len(ofname)==0: raise RuntimeError("Could not find output file name from log: {}".format(log))
     return ofname, success
 
-def getRange(dry_run, ofname1, nuisances, count_lower, count_upper):
+def getRange(dry_run, ofname1, nuisances, count_upper):
     # get r range
     # (default vals provided for dryrun printouts)
     rmin = 0.
     rmax = 10.
     factor = 10.
     if nuisances: factor = 2.
-    factor_min = factor*pow(2,count_lower)
     factor_max = factor*pow(2,count_upper)
     npts = 100
     # increase npts by 1 to include both endpoints
@@ -61,7 +60,6 @@ def getRange(dry_run, ofname1, nuisances, count_lower, count_upper):
         n = limit1.Draw("limit","abs(quantileExpected-0.975)<0.001||abs(quantileExpected-0.025)<0.001","goff")
         if n!=2: raise RuntimeError("Malformed limit tree in "+ofname1)
         vals = [limit1.GetVal(0)[0],limit1.GetVal(0)[1]]
-        rmin = min(vals)/factor_min
         rmax = max(vals)*factor_max
 
     return rmin,rmax,npts
@@ -185,9 +183,9 @@ def step2impl(args, name, lname, rmin, rmax, npts, init_args, extra=""):
         ofname2, _ = getOutfile(logfname2)
     return ofname2
 
-def step2(args, ofname1, init_args, count_lower, count_upper):
+def step2(args, ofname1, init_args, count_upper):
     # get rmin, rmax from step1
-    rmin, rmax, npts = getRange(args.dry_run,ofname1,args.syst,count_lower,count_upper)
+    rmin, rmax, npts = getRange(args.dry_run,ofname1,args.syst,count_upper)
 
     # observed
     ofname2d = step2impl(args,"Observed","step2d",rmin,rmax,npts,init_args)
@@ -319,19 +317,16 @@ def step3(args, scans):
                 cls_exp[q].append(cls_exp_graph[q].Eval(rval,0,'S'))
 
     limits = {}
-    quantiles_at_lower_boundary = []
     quantiles_at_upper_boundary = []
     alpha = 0.05
     idx = find_crossing(cls,alpha)
     limits[-1] = r_data[idx]
     fprint("Observed Limit: r < {:.2f}".format(limits[-1]))
-    if idx==0: quantiles_at_lower_boundary.append(-1)
     if idx==len(r_data)-1 or idx==-1: quantiles_at_upper_boundary.append(-1)
     for q in quantiles:
         qidx = find_crossing(cls_exp[q],alpha)
         limits[q] = r_data[qidx]
         fprint("Expected {:3.1f}%: r < {:.2f}".format(q*100., limits[q]))
-        if qidx==0: quantiles_at_lower_boundary.append(q)
         if qidx==len(r_data)-1 or qidx==-1: quantiles_at_upper_boundary.append(q)
 
     # store best fit values
@@ -339,10 +334,9 @@ def step3(args, scans):
     limits[-4] = r_asimov_bestfit
 
     # repeat step 2 w/ wider range if this happens
-    at_lower_boundary = len(quantiles_at_lower_boundary)>0
     at_upper_boundary = len(quantiles_at_upper_boundary)>0
-    if at_lower_boundary or at_upper_boundary:
-        fprint("WARNING: found limits for quantiles {} at boundary".format(','.join([str(q) for q in quantiles_at_lower_boundary+quantiles_at_upper_boundary])))
+    if at_upper_boundary:
+        fprint("WARNING: found limits for quantiles {} at boundary".format(','.join([str(q) for q in quantiles_at_upper_boundary])))
 
     # draw plots
     if args.plots:
@@ -409,7 +403,7 @@ def step3(args, scans):
         for pformat in ["png","pdf"]:
             c.Print(pname2.format(args.name,pformat))
 
-    return limits, at_lower_boundary, at_upper_boundary
+    return limits, at_upper_boundary
 
 def step4(args, limits, init_args):
     # run MDF for each r value to get output tree w/ proper fit params, normalizations, shapes, etc.
@@ -522,17 +516,14 @@ def manualCLs(args):
 
     # repeat steps 2 and 3 if boundaries are hit
     # todo: add option to "refine" (smaller range)
-    at_lower = True
     at_upper = True
-    count_lower = 0
     count_upper = 0
-    while at_lower or at_upper:
+    while at_upper:
         # 2. run likelihood scans
-        scans = step2(args, ofname1, init_args, count_lower, count_upper)
+        scans = step2(args, ofname1, init_args, count_upper)
 
         # 3. compute CLs from likelihood scans
-        limits, at_lower, at_upper = step3(args, scans)
-        if at_lower: count_lower += 1
+        limits, at_upper = step3(args, scans)
         if at_upper: count_upper += 1
 
     # 4. run MDF for each r value to get fit params etc.
