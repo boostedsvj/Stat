@@ -1,5 +1,10 @@
 import os,sys,subprocess,shlex,uuid
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from collections import defaultdict
+
+#########################
+# helper functions
+#########################
 
 # make status messages useful
 def fprint(msg):
@@ -116,7 +121,7 @@ def getParamConstraints(params,errors):
 def getConstraintsTxt(constraints):
     return ':'.join(["{}={},{}".format(p,v[0],v[1]) for p,v in sorted(constraints.iteritems())])
 
-def getInitArgs(args,ofname,quantile):
+def getInitArgs(args, ofname, quantile):
     # optional: initialize parameter values from step1 (initCLs) or step0 (bonly)
     init_args = ""
     constraint_args = ""
@@ -137,7 +142,11 @@ def handleInitArgs(args, init_args):
         if len(constraints)>0: args = updateArg(args, ['--setParameterRanges'], constraints, ':')
     return args
 
-def step0(args):
+#########################
+# step functions
+#########################
+
+def step0(args, products):
     # run MultiDimFit w/ fixed r=0
     args0 = updateArg(args.args, ["--freezeParameters"], "r", ',')
     args0 = updateArg(args0, ["--setParameters"], "r=0", ',')
@@ -145,35 +154,39 @@ def step0(args):
     cmd0 = "combine -M MultiDimFit --saveShapes --saveNLL {} {}".format(args0,args.fitopts)
     fprint(cmd0)
     logfname0 = "log_step0_{}.log".format(args.name)
-    ofname0 = ""
+    products["ofname0"] = ""
+    products["init_args"] = None
     if not args.dry_run:
         if "step0" not in args.reuse: runCmd(cmd0,logfname0)
-        ofname0, _ = getOutfile(logfname0)
-    return ofname0
+        products["ofname0"], _ = getOutfile(logfname0)
+        products["init_args"] = getInitArgs(args, products["ofname0"], -1)
+    return products
 
-def step1(args, init_args, nuisances=False, stepname="Step1"):
+def step1(args, products, nuisances=False, stepname="Step1"):
     # run AsymptoticLimits w/ nuisances disabled (default)
     args1 = updateArg(args.args, ["-n","--name"], stepname)
     if not nuisances: args1 = updateArg(args1, ["--freezeParameters"], "allConstrainedNuisances", ',')
-    args1 = handleInitArgs(args1,init_args)
+    args1 = handleInitArgs(args1, products["init_args"])
     cmd1 = "combine -M AsymptoticLimits "+args1
     fprint(cmd1)
     logfname1 = "log_{}_{}.log".format(stepname[0].lower()+stepname[1:],args.name)
-    ofname1 = ""
+    products["ofname1"] = ""
     if not args.dry_run:
         if "step1" not in args.reuse: runCmd(cmd1,logfname1)
-        ofname1, _ = getOutfile(logfname1)
-    return ofname1
+        products["ofname1"], _ = getOutfile(logfname1)
+        if len(args.initCLs)>0 and products["init_args"] is None:
+            products["init_args"] = getInitArgs(args, products["ofname1"], 0.5)
+    return products
 
-def stepA(args, init_args):
-    return step1(args, init_args, True, "StepA")
+def stepA(args, products):
+    return step1(args, products, True, "StepA")
 
-def step2impl(args, name, lname, rmin, rmax, npts, init_args, extra=""):
+def step2impl(args, products, name, lname, extra=""):
     # run MDF likelihood scan
     args2 = updateArg(args.args, ["-n","--name"], name)
-    args2 = handleInitArgs(args2,init_args)
-    args2 = updateArg(args2, ['--setParameterRanges'], "r={},{}".format(rmin,rmax), ':')
-    cmd2 = "combine -M MultiDimFit --redefineSignalPOIs r --algo grid --points {} --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --alignEdges 1 --saveNLL {} {} {}".format(npts,extra,args2,args.fitopts)
+    args2 = handleInitArgs(args2, products["init_args"])
+    args2 = updateArg(args2, ['--setParameterRanges'], "r={},{}".format(products["rmin"],products["rmax"]), ':')
+    cmd2 = "combine -M MultiDimFit --redefineSignalPOIs r --algo grid --points {} --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --alignEdges 1 --saveNLL {} {} {}".format(products["npts"],extra,args2,args.fitopts)
     fprint(cmd2)
 
     logfname2 = "log_{}_{}.log".format(lname,args.name)
@@ -183,19 +196,19 @@ def step2impl(args, name, lname, rmin, rmax, npts, init_args, extra=""):
         ofname2, _ = getOutfile(logfname2)
     return ofname2
 
-def step2(args, ofname1, init_args, count_upper):
+def step2(args, products):
     # get rmin, rmax from step1
-    rmin, rmax, npts = getRange(args.dry_run,ofname1,args.syst,count_upper)
+    products["rmin"], products["rmax"], products["npts"] = getRange(args.dry_run, products["ofname1"], args.syst, products["count_upper"])
 
     # observed
-    ofname2d = step2impl(args,"Observed","step2d",rmin,rmax,npts,init_args)
+    products["ofname2d"] = step2impl(args, products, "Observed", "step2d")
 
     # expected (asimov)
-    ofname2a = step2impl(args,"Asimov","step2a",rmin,rmax,npts,init_args,extra="-t -1 --toysFreq")
+    products["ofname2a"] = step2impl(args, products, "Asimov", "step2a", extra="-t -1 --toysFreq")
 
-    return ofname2d, ofname2a
+    return products
 
-def step3(args, scans):
+def step3(args, products):
     # based on https://gitlab.cern.ch/cms-hcg/cadi/hig-19-003/-/blob/master/HJMINLO/plot_cls.py
     interpolate = True
     inter_npoints = 1000
@@ -203,13 +216,15 @@ def step3(args, scans):
 
     if args.dry_run:
         # return dummy dictionary to be used in step4 commands
-        return {q:0.0 for q in quantiles+[-1]}, False, False
+        products["limits"] = {q:0.0 for q in quantiles+[-1]}
+        products["at_upper"] = False
+        return products
 
     import ROOT as r
     # put root in batch mode
     r.gROOT.SetBatch()
-    file_data = r.TFile.Open(scans[0])
-    file_asimov = r.TFile.Open(scans[1])
+    file_data = r.TFile.Open(products["ofname2d"])
+    file_asimov = r.TFile.Open(products["ofname2a"])
     tree_data = file_data.Get('limit')
     tree_asimov = file_asimov.Get('limit')
 
@@ -316,26 +331,26 @@ def step3(args, scans):
             for q in quantiles: 
                 cls_exp[q].append(cls_exp_graph[q].Eval(rval,0,'S'))
 
-    limits = {}
+    products["limits"] = {}
     quantiles_at_upper_boundary = []
     alpha = 0.05
     idx = find_crossing(cls,alpha)
-    limits[-1] = r_data[idx]
-    fprint("Observed Limit: r < {:.2f}".format(limits[-1]))
+    products["limits"][-1] = r_data[idx]
+    fprint("Observed Limit: r < {:.2f}".format(products["limits"][-1]))
     if idx==len(r_data)-1 or idx==-1: quantiles_at_upper_boundary.append(-1)
     for q in quantiles:
         qidx = find_crossing(cls_exp[q],alpha)
-        limits[q] = r_data[qidx]
-        fprint("Expected {:3.1f}%: r < {:.2f}".format(q*100., limits[q]))
+        products["limits"][q] = r_data[qidx]
+        fprint("Expected {:3.1f}%: r < {:.2f}".format(q*100., products["limits"][q]))
         if qidx==len(r_data)-1 or qidx==-1: quantiles_at_upper_boundary.append(q)
 
     # store best fit values
-    limits[-3] = r_data_bestfit
-    limits[-4] = r_asimov_bestfit
+    products["limits"][-3] = r_data_bestfit
+    products["limits"][-4] = r_asimov_bestfit
 
     # repeat step 2 w/ wider range if this happens
-    at_upper_boundary = len(quantiles_at_upper_boundary)>0
-    if at_upper_boundary:
+    products["at_upper"] = len(quantiles_at_upper_boundary)>0
+    if products["at_upper"]:
         fprint("WARNING: found limits for quantiles {} at boundary".format(','.join([str(q) for q in quantiles_at_upper_boundary])))
 
     # draw plots
@@ -403,18 +418,18 @@ def step3(args, scans):
         for pformat in ["png","pdf"]:
             c.Print(pname2.format(args.name,pformat))
 
-    return limits, at_upper_boundary
+    return products
 
-def step4(args, limits, init_args):
+def step4(args, products):
     # run MDF for each r value to get output tree w/ proper fit params, normalizations, shapes, etc.
     # include: prefit (bkg-only) as quantile=-2 w/ r=0
     #          bestfit (obs) as quantile=-3
     #          bestfit (asimov) as quantile=-4
-    limits[-2] = 0.
+    products["limits"][-2] = 0.
     
-    ofnames = {}
+    products["ofitnames"] = {}
     no_reuse = "step4" not in args.reuse
-    for q, rval in sorted(limits.iteritems()):
+    for q, rval in sorted(products["limits"].iteritems()):
         args4 = args.args[:]
         extra = ""
         if q==-3 or q==-4:
@@ -424,7 +439,7 @@ def step4(args, limits, init_args):
             args4 = updateArg(args4, ["--setParameters"], "r={}".format(rval), ',')
             args4 = updateArg(args4, ["--freezeParameters"], "r", ',')
         args4 = updateArg(args4, ["-n","--name"], "Postfit{:.3f}".format(q))
-        args4 = handleInitArgs(args4,init_args)
+        args4 = handleInitArgs(args4, products["init_args"])
         cmd4 = "combine -M MultiDimFit --saveShapes {} {} {}".format(extra,args4,args.fitopts)
         fprint(cmd4)
         logfname4 = "log_step4q{}_{}.log".format(q,args.name)
@@ -446,21 +461,20 @@ def step4(args, limits, init_args):
                 ofname4, success = getOutfile(logfname4)
             if not success:
                 fprint("WARNING: MultiDimFit failed {} times, giving up".format(retries))
-            ofnames[q] = ofname4
+            products["ofitnames"][q] = ofname4
         
-    return ofnames
+    return products
     
-def step5(args, limits, fits, ofname1):
-    # should this be a separate step?
+def step5(args, products):
     if not args.dry_run:
         import ROOT as r
         r.gROOT.ProcessLine("struct quantile_t { Float_t quantile; Double_t limit; };")
         qobj = r.quantile_t()
         
         # combine trees, setting quantile values
-        if len(fits)>0:
+        if products["ofitnames"] is not None:
             trees = r.TList()
-            for q,ofname in sorted(fits.iteritems()):
+            for q,ofname in sorted(products["ofitnames"].iteritems()):
                 file_q = r.TFile.Open(ofname)
                 tree_q = file_q.Get("limit")
                 tree_q.SetDirectory(0)
@@ -470,13 +484,13 @@ def step5(args, limits, fits, ofname1):
                 tree_q_new.SetDirectory(0)
                 tree_q.GetEntry(0)
                 qobj.quantile = q
-                qobj.limit = limits[q]
+                qobj.limit = products["limits"][q]
                 tree_q_new.Fill()
                 trees.Add(tree_q_new)
             newtree = r.TTree.MergeTrees(trees)
         # reuse step1 tree
         else:
-            file1 = r.TFile.Open(ofname1)
+            file1 = r.TFile.Open(products["ofname1"])
             tree1 = file1.Get("limit")
             tree1.SetDirectory(0)
             tree1.SetBranchAddress("quantileExpected",r.AddressOf(qobj,'quantile'))
@@ -484,55 +498,58 @@ def step5(args, limits, fits, ofname1):
             newtree = tree1.CloneTree(0)
             for i in range(tree1.GetEntries()):
                 tree1.GetEntry(i)
-                for q,rval in limits.iteritems():
+                for q,rval in products["limits"].iteritems():
                     if abs(q-qobj.quantile)<0.01:
                         qobj.limit = rval
                         break
                 newtree.Fill()
         
         # output
-        ofile = r.TFile.Open(ofname1.replace("AsymptoticLimits","ManualCLs").replace("Step1",""),"RECREATE")
+        products["ofname5"] = products["ofname1"].replace("AsymptoticLimits","ManualCLs").replace("Step1","")
+        ofile = r.TFile.Open(products["ofname5"], "RECREATE")
         ofile.cd()
         newtree.Write()
         ofile.Close()
+        return products
+
+#########################
+# main functions
+#########################
 
 def manualCLs(args):
-    init_args = None
+    products = defaultdict(lambda: None)
+
     # 0. b-only fit if requested for initCLs
     if args.bonly:
-        ofname0 = step0(args)
-        init_args = getInitArgs(args,ofname0,-1)
+        products = step0(args, products)
 
     # 1. estimate r range (& params for initCLs)
     if not (args.bonly and args.asymptotic):
-        ofname1 = step1(args, init_args, args.syst)
-        if len(args.initCLs)>0 and init_args is None:
-            init_args = getInitArgs(args,ofname1,0.5)
+        products = step1(args, products, args.syst)
 
     # alternate path: just do asymptotic and exit
     if args.asymptotic:
-        ofnameA = stepA(args, init_args)
+        products = stepA(args, products)
         return
 
     # repeat steps 2 and 3 if boundaries are hit
     # todo: add option to "refine" (smaller range)
-    at_upper = True
-    count_upper = 0
-    while at_upper:
+    products["at_upper"] = True
+    products["count_upper"] = 0
+    while products["at_upper"]:
         # 2. run likelihood scans
-        scans = step2(args, ofname1, init_args, count_upper)
+        products = step2(args, products)
 
         # 3. compute CLs from likelihood scans
-        limits, at_upper = step3(args, scans)
-        if at_upper: count_upper += 1
+        products = step3(args, products)
+        if products["at_upper"]: products["count_upper"] += 1
 
     # 4. run MDF for each r value to get fit params etc.
-    fits = []
     if args.fit:
-        fits = step4(args, limits, init_args)
+        products = step4(args, products)
     
     # 5. make new limit tree from step 4 MDF runs
-    step5(args, limits, fits, ofname1)
+    products = step5(args, products)
 
 if __name__=="__main__":
     reusable_steps = ["step0","step1","step2","step4"]
@@ -565,4 +582,5 @@ if __name__=="__main__":
         args.fitopts = '--robustHesse 1'
 
     manualCLs(args)
+
 
