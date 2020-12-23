@@ -232,9 +232,22 @@ def step2impl(args, products, name, lname, ofname, extra=""):
     return products
 
 def step2(args, products):
+    asimov_args = "-t -1 --toysFreq"
+
     if products["count_upper"]==0:
         # get rmin, rmax from step1
         products["rmin"], products["rmax"], products["npts"] = getRange(args.dry_run, products["ofname1"], args.syst)
+
+        # get asimov dataset separately (for some reason, hadding MultiDimFit output files crashes if both --saveWorkspace and --saveToys are used)
+        argsG = updateArg(args.args, ["-n","--name"], "Asimov")
+        argsG = handleInitArgs(argsG, products["init_args"])
+        cmdG = "combine -M GenerateOnly {} --saveToys {}".format(asimov_args, argsG)
+        fprint(cmdG)
+        logfnameG = "log_{}_{}.log".format("step2g",args.name)
+        products["ofname2g"] = ""
+        if not args.dry_run:
+            if "step2" not in args.reuse: runCmd(cmdG, logfnameG)
+            products["ofname2g"], _ = getOutfile(logfnameG)
     else:
         # go to next r range
         range_factor = 2
@@ -247,7 +260,7 @@ def step2(args, products):
     products = step2impl(args, products, "Observed", "step2d", "ofname2d")
 
     # expected (asimov)
-    products = step2impl(args, products, "Asimov", "step2a", "ofname2a", extra="-t -1 --toysFreq")
+    products = step2impl(args, products, "Asimov", "step2a", "ofname2a", extra="{} --toysFile {}".format(asimov_args, products["ofname2g"]))
 
     return products
 
@@ -375,7 +388,7 @@ def step3(args, products):
             for rval in np.linspace(r1, r2, inter_npoints+1):
                 r_data_interp.append(rval)
                 cls.append(cls_graph.Eval(rval,0,'S'))
-                for q in quantiles: 
+                for q in quantiles:
                     cls_exp[q].append(cls_exp_graph[q].Eval(rval,0,'S'))
         r_data = r_data_interp
 
