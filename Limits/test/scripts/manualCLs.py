@@ -24,9 +24,22 @@ def updateArg(args, flags, val, sep=""):
     args += " "+flag+" "+val
     return args
 
+def replaceArg(args, flags, val):
+    # make a copy
+    argsplit = args.split()
+    if not isinstance(flags,list): flags = [flags]
+    for flag in flags:
+        for iarg,arg in enumerate(argsplit):
+            if flag==arg:
+                argsplit[iarg+1] = val
+                break
+    return ' '.join(argsplit)
+
 def runCmd(cmd, log, opt='w'):
-    with open(log,opt) as logfile:
-        subprocess.call(shlex.split(cmd),stdout=logfile,stderr=logfile)
+    if not isinstance(log,int): logfile = open(log,opt)
+    else: logfile = log
+    subprocess.call(shlex.split(cmd),stdout=logfile,stderr=logfile)
+    if not isinstance(log,int): logfile.close()
 
 def getOutfile(log):
     ofname = ""
@@ -47,14 +60,13 @@ def getOutfile(log):
     if len(ofname)==0: raise RuntimeError("Could not find output file name from log: {}".format(log))
     return ofname, success
 
-def getRange(dry_run, ofname1, nuisances, count_upper):
+def getRange(dry_run, ofname1, nuisances):
     # get r range
     # (default vals provided for dryrun printouts)
     rmin = 0.
     rmax = 10.
     factor = 10.
     if nuisances: factor = 2.
-    factor_max = factor*pow(2,count_upper)
     npts = 100
     # increase npts by 1 to include both endpoints
     npts += 1
@@ -65,7 +77,7 @@ def getRange(dry_run, ofname1, nuisances, count_upper):
         n = limit1.Draw("limit","abs(quantileExpected-0.975)<0.001||abs(quantileExpected-0.025)<0.001","goff")
         if n!=2: raise RuntimeError("Malformed limit tree in "+ofname1)
         vals = [limit1.GetVal(0)[0],limit1.GetVal(0)[1]]
-        rmax = max(vals)*factor_max
+        rmax = max(vals)*factor
 
     return rmin,rmax,npts
 
@@ -181,37 +193,68 @@ def step1(args, products, nuisances=False, stepname="Step1"):
 def stepA(args, products):
     return step1(args, products, True, "StepA")
 
-def step2impl(args, products, name, lname, extra=""):
+def step2impl(args, products, name, lname, ofname, extra=""):
+    # rename file from previous r range
+    ofname_old = None
+    if not args.dry_run and products[ofname] is not None:
+        ofname_old = products[ofname].replace(".","0.",1)
+        os.rename(products[ofname], ofname_old)
+
     # run MDF likelihood scan
     args2 = updateArg(args.args, ["-n","--name"], name)
     args2 = handleInitArgs(args2, products["init_args"])
     args2 = updateArg(args2, ['--setParameterRanges'], "r={},{}".format(products["rmin"],products["rmax"]), ':')
-    cmd2 = "combine -M MultiDimFit --redefineSignalPOIs r --algo grid --points {} --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --alignEdges 1 --saveNLL {} {} {}".format(products["npts"],extra,args2,args.fitopts)
+    # addl args for second r ranges
+    npts = products["npts"]
+    if ofname_old is not None:
+        npts -= 1
+        extra += " --snapshotName MultiDimFit --skipInitialFit"
+        args2 = replaceArg(args2, ['-d', '--datacard'], ofname_old)
+    cmd2 = "combine -M MultiDimFit --redefineSignalPOIs r --algo grid --points {} --X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --alignEdges 1 --saveWorkspace --saveNLL {} {} {}".format(products["npts"],extra,args2,args.fitopts)
     fprint(cmd2)
 
     logfname2 = "log_{}_{}.log".format(lname,args.name)
-    ofname2 = ""
+    products[ofname] = ""
     if not args.dry_run:
         if "step2" not in args.reuse: runCmd(cmd2,logfname2)
-        ofname2, _ = getOutfile(logfname2)
-    return ofname2
+        products[ofname], _ = getOutfile(logfname2)
+
+        # combine w/ previous file
+        if ofname_old is not None:
+            ofname_new = products[ofname].replace(".","1.",1)
+            os.rename(products[ofname], ofname_new)
+            cmdh = "hadd {} {} {}".format(products[ofname], ofname_old, ofname_new)
+            fprint(cmdh)
+            if "step2" not in args.reuse:
+                runCmd(cmdh, subprocess.PIPE)
+                for ofname_ in [ofname_old,ofname_new]: os.remove(ofname_)
+
+    return products
 
 def step2(args, products):
-    # get rmin, rmax from step1
-    products["rmin"], products["rmax"], products["npts"] = getRange(args.dry_run, products["ofname1"], args.syst, products["count_upper"])
+    if products["count_upper"]==0:
+        # get rmin, rmax from step1
+        products["rmin"], products["rmax"], products["npts"] = getRange(args.dry_run, products["ofname1"], args.syst)
+    else:
+        # go to next r range
+        range_factor = 2
+        products["rmin"] = products["rmax"]
+        products["rmax"] = products["rmax"]*range_factor
+        # avoid rerunning previous rmax
+        products["rmin"] += (products["rmax"]-products["rmin"])/float(products["npts"])
 
     # observed
-    products["ofname2d"] = step2impl(args, products, "Observed", "step2d")
+    products = step2impl(args, products, "Observed", "step2d", "ofname2d")
 
     # expected (asimov)
-    products["ofname2a"] = step2impl(args, products, "Asimov", "step2a", extra="-t -1 --toysFreq")
+    products = step2impl(args, products, "Asimov", "step2a", "ofname2a", extra="-t -1 --toysFreq")
 
     return products
 
 def step3(args, products):
     # based on https://gitlab.cern.ch/cms-hcg/cadi/hig-19-003/-/blob/master/HJMINLO/plot_cls.py
     interpolate = True
-    inter_npoints = 1000
+    inter_npoints = 10
     quantiles = [0.025, 0.16, 0.50, 0.84, 0.975]
 
     if args.dry_run:
@@ -321,15 +364,20 @@ def step3(args, products):
         return idx
 
     if interpolate:
+        r_data_interp = []
         cls = []
-        r_data = []
         for q in quantiles:
             cls_exp[q] = []
-        for rval in np.linspace(rmin, rmax, inter_npoints+1):
-            r_data.append(rval)
-            cls.append(cls_graph.Eval(rval,0,'S'))
-            for q in quantiles: 
-                cls_exp[q].append(cls_exp_graph[q].Eval(rval,0,'S'))
+        # fill in more points between each pair of r values
+        for rind in range(len(r_data)-1):
+            r1 = r_data[rind]
+            r2 = r_data[rind+1]
+            for rval in np.linspace(r1, r2, inter_npoints+1):
+                r_data_interp.append(rval)
+                cls.append(cls_graph.Eval(rval,0,'S'))
+                for q in quantiles: 
+                    cls_exp[q].append(cls_exp_graph[q].Eval(rval,0,'S'))
+        r_data = r_data_interp
 
     products["limits"] = {}
     quantiles_at_upper_boundary = []
