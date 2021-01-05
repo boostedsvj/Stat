@@ -35,8 +35,6 @@ parser.add_argument("-R", "--reparam", dest="reparam", default=False, action='st
 parser.add_argument("-N", "--name", dest="name", type=str, default="Test", help="name for combine files")
 args = parser.parse_args()
 
-if not "Alt" in args.mod: args.reparam = False
-
 pwd = os.getcwd()
 
 main_params = {
@@ -51,6 +49,9 @@ alt_params = {
     "highSVJ2": (2,2),
     "lowSVJ2": (2,2),
 }
+if args.reparam:
+    main_params["highSVJ2"] = (2,2)
+    main_params["lowSVJ2"] = (2,2)
 def get_params(region,pdict,suff=""):
     order = pdict[region][0]
     n = pdict[region][1]
