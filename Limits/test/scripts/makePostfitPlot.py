@@ -37,6 +37,8 @@ quantile_info = {
 function_info = {
     ("alt",2):  {"formula": "[0]*exp([1]*x/13000+[2]*log(x/13000))", "legname": "g_{2}(x)", "name": "g"},
     ("alt",3):  {"formula": "[0]*exp([1]*x/13000+[2]*log(x/13000)+[3]*log(x/13000)^2)", "legname": "g_{3}(x)", "name": "g"},
+    ("ralt",2):  {"formula": "[0]*exp([1]*x/13000)*(x/13000)^([2])", "legname": "g_{2}(x)", "name": "g"},
+    ("ralt",3):  {"formula": "[0]*exp([1]*x/13000)*(x/13000)^([2]*(1+[3]*log(x/13000)))", "legname": "g_{3}(x)", "name": "g"},
     ("main",2): {"formula": "([0]*(1-x/13000)^[1])*((x/13000)^(-[2]))", "legname": "f_{1,1}(x)", "name": "f"},
     ("main",5): {"formula": "([0]*(1-x/13000)^([1]+[2]*log(x/13000)+[3]*log(x/13000)^2))*((x/13000)^(-([4]+[5]*log(x/13000))))", "legname": "f_{3,2}(x)", "name": "f"},
 }
@@ -48,7 +50,7 @@ region_info = {
     "lowSVJ2": {"alt": 2, "main": 2, "legname": "low-SVJ2"},
 }
 
-def makePostfitPlot(mass, name, method, quantile, data_file, datacard_dir, injected, combo, region):
+def makePostfitPlot(mass, name, method, quantile, data_file, datacard_dir, injected, combo, region, reparam):
     ch = "ch1" if "high" in region else "ch2"
 
     iname = "input_svj_mt_fit_toy_{region}_{name}_{qname}_mZprime{mass}.txt".format(region=region,mass=mass,name=name,qname=quantile_info[quantile]["name"])
@@ -73,7 +75,7 @@ def makePostfitPlot(mass, name, method, quantile, data_file, datacard_dir, injec
         # only pick finfo once, because it should be consistent for the region
         if finfo is None:
             ftype = "alt" if any("_alt" in p for p in pfit) else "main"
-            finfo = function_info[(ftype,rinfo[ftype])]
+            finfo = function_info[("ralt" if reparam and ftype=="alt" else ftype,rinfo[ftype])]
         fitname = "{}_{}".format(finfo["name"],qinfo["name"])
 
         fits[fitname] = fit_template.format(
@@ -153,6 +155,7 @@ if __name__=="__main__":
     parser.add_argument("-D", "--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/", help="datacard location (for prefit)")
     parser.add_argument("-q", "--quantile", dest="quantile", type=float, default=-1, help="quantile to plot fits")
     parser.add_argument("-c", "--combos", dest="combos", type=str, default=[], nargs='+', choices=["cut","bdt"], help="combo(s) to plot")
+    parser.add_argument("-r", "--reparam", dest="reparam", default=False, action="store_true", help="use reparameterized alt fn")
     args = parser.parse_args()
 
     combos = {
@@ -164,7 +167,7 @@ if __name__=="__main__":
     input_files = []
     for combo,regions in args.combos.iteritems():
         for region in regions:
-            tmp = makePostfitPlot(args.mass,args.name,args.method,args.quantile,args.data,args.datacards,args.injected,combo,region)
+            tmp = makePostfitPlot(args.mass,args.name,args.method,args.quantile,args.data,args.datacards,args.injected,combo,region,args.reparam)
             input_files.append(tmp)
     print ' '.join(input_files)
 
