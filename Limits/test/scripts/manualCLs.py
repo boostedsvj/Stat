@@ -35,6 +35,19 @@ def replaceArg(args, flags, val):
                 break
     return ' '.join(argsplit)
 
+def removeArg(args, matches, before=0, after=0, exact=True):
+    # make a copy
+    argsplit = args.split()
+    if not isinstance(matches,list): matches = [matches]
+    toremove = ""
+    for match in matches:
+        for iarg,arg in enumerate(argsplit):
+            if (exact and match==arg) or (not exact and match in arg):
+                toremove = ' '.join(argsplit[iarg-before:iarg+after+1])
+                break
+    args = args.replace(toremove,"",1)
+    return args
+
 def runCmd(cmd, log, opt='w'):
     if not isinstance(log,int): logfile = open(log,opt)
     else: logfile = log
@@ -500,6 +513,8 @@ def step4(args, products):
             args4 = updateArg(args4, ["--setParameters"], "r={}".format(rval), ',')
             args4 = updateArg(args4, ["--freezeParameters"], "r", ',')
         args4 = updateArg(args4, ["-n","--name"], "Postfit{:.3f}".format(q))
+        # not needed when params already known
+        args4 = removeArg(args4,"MINIMIZER_MaxCalls",before=1,exact=False)
         args4 = handleInitArgs(args4, products["init_args"])
         cmd4 = "combine -M MultiDimFit --saveShapes {} {} {}".format(extra,args4,args.fitopts)
         fprint(cmd4)
@@ -512,7 +527,7 @@ def step4(args, products):
             max_retries = 10
             rval_old = rval
             rval_new = rval
-            while no_reuse and not success and retries <= max_retries:
+            while no_reuse and not success and retries <= max_retries and q!=-2:
                 retries += 1
                 rval_old = rval_new
                 rval_new = rval-0.00000000001*retries

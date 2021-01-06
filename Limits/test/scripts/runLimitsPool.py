@@ -24,7 +24,7 @@ parser.add_argument("-r", "--regions", dest="regions", type=str, default=["cut",
 parser.add_argument("-n", "--npool", dest="npool", type=int, default=6, help="number of processes")
 parser.add_argument("-D", "--dry-run", dest="dry_run", default=False, action='store_true', help="dry run (print commands but don't execute)")
 parser.add_argument("-f", "--freezeNorm", dest="freezeNorm", default=False, action="store_true", help="freeze bkg normalization to data")
-parser.add_argument("-m", "--mod", dest="mod", type=str, default=[], choices=["F12","Alt","Minfix","Robust","S0","Nostat"], nargs="*", help="modification(s)")
+parser.add_argument("-m", "--mod", dest="mod", type=str, default=[], choices=["F12","Alt","Minfix","Robust","S0","Nostat","Calls"], nargs="*", help="modification(s)")
 parser.add_argument("-j", "--just-hadd", dest="just_hadd", default=False, action="store_true", help="don't run any combine commands, just hadd")
 parser.add_argument("--no-hadd", dest="no_hadd", default=False, action="store_true", help="don't hadd")
 parser.add_argument("-M", "--manualCLs", dest="manualCLs", default=False, action='store_true', help="use manual CLs algorithm")
@@ -134,6 +134,8 @@ def doLimit(mass):
         cargs += " --X-rtd improveFalseMinima"
     if "Robust" in args.mod:
         cargs += " --X-rtd allowRobustBisection1"
+     if "Calls" in args.md:
+        cargs += " --X-rtd MINIMIZER_MaxCalls=100000"
     datacards = []
     reparam_txt = "_reparam" if args.reparam else ""
     for region in regions:
