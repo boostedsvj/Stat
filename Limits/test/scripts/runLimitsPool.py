@@ -134,7 +134,7 @@ def doLimit(mass):
         cargs += " --X-rtd improveFalseMinima"
     if "Robust" in args.mod:
         cargs += " --X-rtd allowRobustBisection1"
-     if "Calls" in args.md:
+    if "Calls" in args.mod:
         cargs += " --X-rtd MINIMIZER_MaxCalls=100000"
     datacards = []
     reparam_txt = "_reparam" if args.reparam else ""
