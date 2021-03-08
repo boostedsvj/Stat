@@ -4,35 +4,7 @@ from multiprocessing import Pool
 import getBiasArgs
 from Stat.Limits.bruteForce import makeVarInfoList
 from collections import OrderedDict
-
-# make status messages useful
-def fprint(msg):
-    import sys
-    print(msg)
-    sys.stdout.flush()
-
-def alpha_val(val):
-    result = 0
-    if val=="peak": result = -2
-    elif val=="high": result = -1
-    elif val=="low": result = -3
-    else: result = float(val)
-    return result
-
-def get_signame(sig):
-    return "SVJ_"+"_".join("{}{}".format(key,val) for key,val in sig.iteritems() if key!="xsec")
-#    return "SVJ_mZprime{}_mDark{}_rinv{}_alpha{}".format(sig["mZprime"],sig["mDark"],sig["rinv"],sig["alpha"])
-
-def getInitFromBF(fname, wsname, pdfname):
-    import ROOT as r
-    r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
-    file = r.TFile.Open(fname)
-    ws = file.Get(wsname)
-    pdf = ws.pdf(pdfname)
-
-    pars = makeVarInfoList(pdf.getPars())
-    setargs = ["{}={}".format(p.name,p.val) for p in pars]
-    return setargs
+from paramUtils import fprint, alphaVal, getSigname, getFname, getWname, getPname, getCombos, getInitFromBF
 
 def runCmd(args):
     output = ""
@@ -45,10 +17,10 @@ def runCmd(args):
 def doLimit(info):
     args = info["args"]
     sig = info["sig"]
-    signame = get_signame(sig)
+    signame = getSigname(sig)
     os.chdir(os.path.join(args.pwd,signame))
 
-    params = {key:float(val) if key!="alpha" else alpha_val(val) for key,val in sig.iteritems()}
+    params = {key:float(val) if key!="alpha" else alphaVal(val) for key,val in sig.iteritems()}
     setargs = []
     trkargs = []
     treargs = []
@@ -61,7 +33,7 @@ def doLimit(info):
 
     fn = 1 if "Alt" in args.mod else 0
     for region in args.combo_regions:
-        fname = "ws_{}_{}_2018_template.root".format(signame, region)
+        fname = getWname(signame,region)
         biasargs = getBiasArgs.main(fname, args.default_ws, region, fn, verbose=False)
         setargs.extend(biasargs['SetArg'])
         frzargs.extend(biasargs['FrzArg'])
@@ -69,7 +41,7 @@ def doLimit(info):
         treargs.extend(biasargs['TrkArg'])
         if args.init:
             if isinstance(args.init,dict): setargs.extend(args.init[region].split(','))
-            else: setargs.extend(getInitFromBF(fname, args.default_ws, "Bkg{}_{}_2018".format("_Alt" if "Alt" in args.mod else "", region)))
+            else: setargs.extend(getInitFromBF(fname, args.default_ws, getPname(region, "Alt" in args.mod)))
 
     for ch in ["ch1","ch2"]:
         normargs = ["n_exp_bin{}_proc_roomultipdf".format(ch),"shapeBkg_roomultipdf_{}__norm".format(ch),"n_exp_final_bin{}_proc_roomultipdf".format(ch),"n_exp_final_bin{}_proc_{}".format(ch,signame)]
@@ -137,10 +109,7 @@ def main(args):
     if "-s" in args.extra: cname += "Syst"
     args.cname = cname
 
-    combos = {
-        "cut": ["highCut","lowCut"],
-        "bdt": ["highSVJ2","lowSVJ2"],
-    }
+    combos = getCombos()
     for combo,regions in combos.iteritems():
         if not combo in args.regions: continue
         args.combo = combo
@@ -159,13 +128,12 @@ def main(args):
 
         outfiles = []
         for sig in args.signals:
-            signame = get_signame(sig)
             mname = "ManualCLs" if args.manualCLs and not "-A" in args.extra else "AsymptoticLimits"
             sname = "StepA" if args.manualCLs and "-A" in args.extra else ""
-            fname = signame+"/higgsCombine"+sname+cname+"."+mname+".mH120.ana"+combo+".root"
+            seedname = None
             if len(args.toyfile)>0 and not args.asimov:
-                seedname = '.'.join(args.toyfile.split('.')[-2:])
-                fname = fname.replace(".root","."+seedname)
+                seedname = args.toyfile.split('.')[-2]
+            fname = getFname(sname+cname,mname,combo,sig=sig,seed=seedname)
             append = False
             if args.dry_run:
                 append = True

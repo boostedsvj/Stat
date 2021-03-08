@@ -1,6 +1,6 @@
 import os,sys,shlex,subprocess
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from getParamsTracked import getParamsTracked, getFname
+from paramUtils import getParamsTracked, getSigname, getFname, getWname, getPname, getCombos, getInitFromBF
 from collections import OrderedDict
 from array import array
 from Stat.Limits.bruteForce import makeVarInfoList
@@ -10,27 +10,6 @@ def copyVals(tree,index,size):
     tmp.SetSize(size)
     # deep copy
     return [vv for vv in tmp]
-
-def get_signame(mass):
-    return "SVJ_mZprime{}_mDark20_rinv03_alphapeak".format(mass)
-
-def getInitFromBF(mass, region, pdfname):
-    import ROOT as r
-    r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
-    fname = "{0}/ws_{0}_{1}_2018_template.root".format(get_signame(mass),region)
-    file = r.TFile.Open(fname)
-    ws = file.Get("SVJ")
-    pdf = ws.pdf(pdfname)
-    pars = makeVarInfoList(pdf.getPars())
-    npars = len(pars)
-
-    fname2 = "fitResults_{}.root".format(region)
-    file2 = r.TFile.Open(fname2)
-    result = file2.Get("fitresult_{}{}_data_obs".format(pdfname,npars))
-
-    setargs = {p.name:result.floatParsFinal().find(p.name).getValV() for p in pars}
-    errargs = {p.name:result.floatParsFinal().find(p.name).getError() for p in pars}
-    return setargs, errargs
 
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument("-m", "--mass", dest="mass", type=int, required=True, help="Zprime mass")
@@ -42,17 +21,14 @@ parser.add_argument("-I", "--init", dest="init", default=False, action='store_tr
 args = parser.parse_args()
 
 pformats = ["png","pdf"]
-combos = {
-"cut": ["highCut","lowCut"],
-"bdt": ["highSVJ2","lowSVJ2"],
-}
+combos = getCombos()
 
 # get init vals
 setargs = {}
 errargs = {}
 if args.init:
     for region in combos[args.combo]:
-        stmp, etmp = getInitFromBF(args.mass, region, "Bkg{}_{}_2018".format("_Alt" if "Alt" in args.name else "", region))
+        stmp, etmp = getInitFromBF(getWname(args.sig, region), "SVJ", getPname(region, "Alt" in args.name), region)
         setargs.update(stmp)
         errargs.update(etmp)
 
