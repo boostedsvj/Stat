@@ -3,8 +3,8 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from multiprocessing import Pool
 import getBiasArgs
 from Stat.Limits.bruteForce import makeVarInfoList
-from collections import OrderedDict
-from paramUtils import fprint, alphaVal, getSigname, getFname, getWname, getPname, getCombos, getInitFromBF
+from paramUtils import fprint, alphaVal, makeSigDict, getParamNames, getSigname, getFname, getWname, getPname, getCombos, getInitFromBF
+import plotParamsScan
 
 def runCmd(args):
     output = ""
@@ -90,6 +90,9 @@ def doLimit(info):
     outputs.append(command)
     if not args.dry_run: 
         outputs.append(runCmd(command))
+        if args.plots:
+            for step in ["Asimov","Observed"]:
+                plotParamsScan.main(sig,args.cname,step,args.combo,args.init)
     os.chdir(args.pwd)
 
     return outputs
@@ -173,7 +176,7 @@ if __name__=="__main__":
     parser.add_argument("--newbf", dest="newbf", type=str, default="", help="file containing bf dict to import for initial values")
     parser.add_argument("--extra", dest="extra", type=str, default="", help="extra args for manual CLs")
     sig_group = parser.add_mutually_exclusive_group()
-    sig_group.add_argument("--signal", dest="signals", metavar=("mZprime","mDark","rinv","alpha"), type=str, default=[], nargs=4, help="signal parameters")
+    sig_group.add_argument("--signal", dest="signals", metavar=tuple(getParamNames()), type=str, default=[], nargs=4, help="signal parameters")
     sig_group.add_argument("--signals", dest="signals", type=str, default="", help="text file w/ list of signal parameters")
     parser.set_defaults(signals="default_signals.txt")
     parser.add_argument("-N", "--name", dest="name", type=str, default="Test", help="name for combine files")
@@ -181,12 +184,13 @@ if __name__=="__main__":
     parser.add_argument("-t", "--toyfile", dest="toyfile", type=str, default="", help="toy file ({} in filename will be substituted with combined region)")
     parser.add_argument("--asimov", dest="asimov", default=False, action="store_true", help="toy file contains asimov dataset")
     parser.add_argument("-a", "--args", dest="args", type=str, default="", help="extra args for combine")
+    parser.add_argument("-p", "--plots", dest="plots", default=False, action="store_true", help="make plots")
     args = parser.parse_args()
 
     # parse signal info
     with open('dict_xsec_Zprime.txt','r') as xfile:
         xsecs = {xline.split('\t')[0]: float(xline.split('\t')[1]) for xline in xfile}
-    param_names = ["mZprime", "mDark", "rinv", "alpha", "xsec"]
+    param_names = getParamNames()+["xsec"]
     param_values = []
     if isinstance(args.signals,list):
         param_values.append(args.signals)
@@ -198,7 +202,7 @@ if __name__=="__main__":
                 if len(line)==0: continue
                 param_values.append(line.split())
                 param_values[-1].append(xsecs[param_values[-1][0]])
-    args.signals = [OrderedDict([(param_names[j],param_values[i][j]) for j in range(len(param_values[i]))]) for i in range(len(param_values))]
+    args.signals = [makeSigDict(param_values[i],param_names) for i in range(len(param_values))]
 
     # pass some defaults
 

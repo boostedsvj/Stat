@@ -35,8 +35,17 @@ def getBranches(tree, matches=None, exact=False):
             branches.append(bname)
     return branches
 
-def getSigname(sig):
+def getParamNames():
     params = ["mZprime", "mDark", "rinv", "alpha"]
+    return params
+
+def makeSigDict(values,names=None):
+    if names is None: names=getParamNames()
+    sigdict = {names[j]:values[j] for j in range(len(values))}
+    return sigdict
+
+def getSigname(sig):
+    params = getParamNames()
     return "SVJ_"+"_".join("{}{}".format(key,sig[key]) for key in params)
 
 def getWname(sig,region):
