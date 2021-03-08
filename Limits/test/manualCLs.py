@@ -412,6 +412,8 @@ def step3(args, products):
     dn2ll_data_graph = r.TGraph(len(r_data))
     dn2ll_asimov_graph = r.TGraph(len(r_data))
 
+    dn2ll_min = 1e10
+    dn2ll_max = -1e10
     for i in range(len(r_data)):
         rval = r_data[i]
         if rval < r_data_bestfit:
@@ -451,6 +453,8 @@ def step3(args, products):
         clb_graph.SetPoint(i, rval, b)
         dn2ll_data_graph.SetPoint(i, rval, 2*dnll_data_constrained)
         dn2ll_asimov_graph.SetPoint(i, rval, 2*dnll_asimov[i])
+        dn2ll_min = min(dn2ll_min,2*dnll_data_constrained,2*dnll_asimov[i])
+        dn2ll_max = max(dn2ll_max,2*dnll_data_constrained,2*dnll_asimov[i])
 
     import numpy as np
     def find_crossing(array, value):
@@ -548,7 +552,7 @@ def step3(args, products):
             c.Print(pname1.format(args.name,pformat))
 
         hist.Draw()
-        hist.SetMaximum(10)
+        hist.GetYaxis().SetRangeUser(dn2ll_min,dn2ll_max)
         dn2ll_data_graph.Draw('l')
         dn2ll_data_graph.SetLineColor(r.kBlack)
         dn2ll_asimov_graph.Draw('l')
