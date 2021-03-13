@@ -1,6 +1,7 @@
-import os,sys
+import os,sys,subprocess,shlex
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from Stat.Limits.bruteForce import makeVarInfoList
+from copy import deepcopy
 
 # make status messages useful
 def fprint(msg):
@@ -8,6 +9,22 @@ def fprint(msg):
     print(msg)
     sys.stdout.flush()
 
+# system interaction
+def runCmd(args):
+    output = ""
+    try:
+        output += subprocess.check_output(shlex.split(args),stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        output += e.output
+    return output
+
+def runCmds(commands):
+    for command in commands:
+        fprint(command)
+        output = runCmd(command)
+        fprint(output)
+
+# basic (analysis-specific) helpers
 def alphaVal(val):
     result = 0
     if val=="peak": result = -2
@@ -23,18 +40,16 @@ def getCombos():
     }
     return combos
 
-def getBranches(tree, matches=None, exact=False):
-    import ROOT as r
-    if not exact and not isinstance(matches,list): matches = [matches]
-    elif exact and isinstance(matches,list): matches = matches[0]
-    branches = []
-    for b in tree.GetListOfBranches():
-        bname = b.GetName()
-        leaf = b.GetLeaf(bname)
-        if matches is None or (exact and matches==b.GetName()) or (not exact and all(m in bname for m in matches)):
-            branches.append(bname)
-    return branches
+def getChannel(region):
+    return "ch1" if "high" in region else "ch2"
 
+def PoissonErrorUp(N):
+    alpha = 1 - 0.6827 #1 sigma interval
+    import ROOT as r
+    U = r.Math.gamma_quantile_c(alpha/2,N+1,1.)
+    return U-N
+
+# various signal name handling
 def getParamNames():
     params = ["mZprime", "mDark", "rinv", "alpha"]
     return params
@@ -48,22 +63,64 @@ def getSigname(sig):
     params = getParamNames()
     return "SVJ_"+"_".join("{}{}".format(key,sig[key]) for key in params)
 
-def getWname(sig,region):
-    signame = sig if isinstance(sig,str) else getSigname(sig)
-    wname = "ws_{}_{}_2018_template.root".format(signame,region)
-    if not os.path.basename(os.getcwd())==signame: wname = signame+"/"+wname
-    return wname
+def getSignameCheck(sig):
+    return sig if isinstance(sig,str) else getSigname(sig)
 
+def getSignameShort(sig):
+    params = getParamNames()
+    sig2 = deepcopy(sig)
+    if len(sig2["rinv"])>1 and sig2["rinv"][0]=="0": sig2["rinv"] = "0."+sig2["rinv"][1:]
+    return "SVJ_"+"_".join(sig2[key] for key in params)
+
+# generic check for signal directory
+def getXname(sig,xname):
+    signame = getSignameCheck(sig)
+    if not os.path.basename(os.getcwd())==signame: xname = signame+"/"+xname
+    return xname
+
+# workspace filename
+def getWname(sig,region):
+    signame = getSignameCheck(sig)
+    wname = "ws_{}_{}_2018_template.root".format(signame,region)
+    return getXname(signame,wname)
+
+# individual datacard
+def getDname(sig,region):
+    signame = getSignameCheck(sig)
+    dname = "{}_{}_2018_template_bias.txt".format(signame,region)
+    return getXname(signame,dname)
+
+# combined datacard
+def getDCname(sig,combo):
+    dcname = "datacard_{}_{}.txt".format(getSignameShort(sig), combo)
+    return getXname(sig,dcname)
+
+# parameter names
 def getPname(region, alt=False):
     pname = "Bkg{}_{}_2018".format("_Alt" if alt else "", region)
     return pname
 
+# combine filename
 def getFname(name, method, combo, sig=None, prefix="higgsCombine", seed=None):
+    fname = "{}{}.{}.mH120{}{}.root".format(prefix,name,method,".ana{}".format(combo) if len(combo)>0 else "","."+str(seed) if seed is not None else "")
     if sig is not None:
         signame = getSigname(sig)
-    fname = "{}{}.{}.mH120.ana{}{}.root".format(prefix,name,method,combo,"."+str(seed) if seed is not None else "")
-    if sig is not None and not os.path.basename(os.getcwd())==signame: fname = signame+"/"+fname
-    return fname
+        return getXname(signame,fname)
+    else:
+        return fname
+
+# extract tracked params from trees
+def getBranches(tree, matches=None, exact=False):
+    import ROOT as r
+    if not exact and not isinstance(matches,list): matches = [matches]
+    elif exact and isinstance(matches,list): matches = matches[0]
+    branches = []
+    for b in tree.GetListOfBranches():
+        bname = b.GetName()
+        leaf = b.GetLeaf(bname)
+        if matches is None or (exact and matches==b.GetName()) or (not exact and all(m in bname for m in matches)):
+            branches.append(bname)
+    return branches
 
 def getParamsText(params):
     return ["{}={}".format(p.replace('trackedParam_','').replace('trackedError_',''),v) for p,v in sorted(params.iteritems()) if any(x in p for x in ['high','low','shapeBkg'])]
@@ -100,6 +157,7 @@ def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extra
     results = {p:tree.GetVal(i)[0] for i,p in enumerate(params)}
     return results
 
+# extract brute force initial values
 def getInitFromBF(fname, wsname, pdfname, region=None):
     import ROOT as r
     r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
@@ -110,6 +168,7 @@ def getInitFromBF(fname, wsname, pdfname, region=None):
     npars = len(pars)
 
     if region is not None:
+        # need to use fit results because later saved workspaces don't track the errors
         fname2 = "fitResults_{}.root".format(region)
         if not os.path.isfile(fname2): fname2 = "../"+fname2
         file2 = r.TFile.Open(fname2)

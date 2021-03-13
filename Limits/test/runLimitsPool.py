@@ -1,18 +1,28 @@
-import os,sys,subprocess,shlex
+import os,sys,shlex
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from multiprocessing import Pool
 import getBiasArgs
 from Stat.Limits.bruteForce import makeVarInfoList
-from paramUtils import fprint, alphaVal, makeSigDict, getParamNames, getSigname, getFname, getWname, getPname, getCombos, getInitFromBF
+from paramUtils import fprint, runCmd, alphaVal, makeSigDict, getParamNames, getSigname, getFname, getWname, getDname, getDCname, getPname, getCombos, getInitFromBF
 import plotParamsScan
+from makePostfitPlot import makePostfitPlot
 
-def runCmd(args):
-    output = ""
-    try:
-        output += subprocess.check_output(shlex.split(args),stderr=subprocess.STDOUT)
-    except subprocess.CalledProcessError as e:
-        output += e.output
-    return output
+def getFromToyfile(toyfile,match,replace=True,delim='_'):
+    def match_text(item,match):
+        return match in item
+    def match_int(item,match):
+        try:
+            int(item)
+            return True
+        else:
+            return False
+
+    # special case
+    if match=="#": matcher = match_int
+    else: matcher = match_text
+    result = next(item for item in toyfile.split(delim) if matcher(item,match))
+    if replace and match!="#": result = result.replace(match,"")
+    return result
 
 def doLimit(info):
     args = info["args"]
@@ -64,8 +74,8 @@ def doLimit(info):
         cargs += " --toysFile {} -t {} --toysFrequentist".format(args.toyfile.format(args.combo),-1 if args.asimov else 1)
     datacards = []
     for region in args.combo_regions:
-        datacards.append(signame+"_{}_2018_template_bias{}.txt".format(region,args.suff))
-    dcfname = "datacard_{}_{}.txt".format('_'.join([val for key,val in sig.iteritems() if key!="xsec"]),args.combo)
+        datacards.append(getDname(signame,region).replace(".txt","{}.txt".format(args.suff)))
+    dcfname = getDCname(args.signal,args.combo)
 
     outputs = []
     fprint("Calculating limit for {}...".format(signame))
@@ -88,11 +98,19 @@ def doLimit(info):
     else:
         command = "combine -M AsymptoticLimits "+cargs
     outputs.append(command)
-    if not args.dry_run: 
+    if not args.dry_run:
         outputs.append(runCmd(command))
         if args.plots:
             for step in ["Asimov","Observed"]:
                 plotParamsScan.main(sig,args.cname,step,args.combo,args.init)
+            # currently, postfit files only created for ManualCLs
+            if args.manualCLs:
+                obs = len(args.toyfile)==0
+                dfile = "hists.{}.{}.root".format(getFromToyfile(args.toyfile,"higgsCombine"), getFromToyfile(args.toyfile,"#",delim='.')) if not obs else ""
+                injected = getFromToyfile(args.toyfile,"mZprime") if "sigtoy" in args.toyfile else ""
+                for q in [-3, -2, -1]:
+                    for region in args.combo_regions:
+                        makePostfitPlot(sig,args.cname,"ManualCLs",q,dfile,args.datacard_dir,obs,injected,args.combo,region,True)
     os.chdir(args.pwd)
 
     return outputs
@@ -185,6 +203,7 @@ if __name__=="__main__":
     parser.add_argument("--asimov", dest="asimov", default=False, action="store_true", help="toy file contains asimov dataset")
     parser.add_argument("-a", "--args", dest="args", type=str, default="", help="extra args for combine")
     parser.add_argument("-p", "--plots", dest="plots", default=False, action="store_true", help="make plots")
+    parser.add_argument("--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/", help="datacard histogram location (for postfit plots)")
     args = parser.parse_args()
 
     # parse signal info

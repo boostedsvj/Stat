@@ -164,7 +164,7 @@ if __name__=="__main__":
     parser.add_argument("-S","--signal", dest="signals", metavar=("mZprime","mDark","rinv","alpha"), type=str, required=True, nargs=4, help="signal parameters")
     parser.add_argument("-n", "--name", dest="name", type=str, default="Test", help="test name (higgsCombine[step][name])")
     parser.add_argument("-s", "--step", dest="step", type=str, default="Test", help="step name (higgsCombine[step][name])")
-    parser.add_argument("-c", "--combo", dest="combo", type=str, required=True, help="combo to plot")
+    parser.add_argument("-c", "--combo", dest="combo", type=str, required=True, choices=sorted(list(getCombos())), help="combo to plot")
     parser.add_argument("-I", "--init", dest="init", default=False, action='store_true', help="use existing initial values of parameters")
     args = parser.parse_args()
 
