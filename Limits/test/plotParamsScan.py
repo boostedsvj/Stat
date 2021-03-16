@@ -19,7 +19,7 @@ def printCan(can,oname):
         if pformat=="eps":
             os.system("epstopdf {0} && rm {0}".format(oname+".eps"))
 
-def main(sig,name,step,combo,init):
+def main(sig,name,step,combo,seed,init):
     combos = getCombos()
 
     # get init vals
@@ -31,7 +31,7 @@ def main(sig,name,step,combo,init):
             setargs.update(stmp)
             errargs.update(etmp)
 
-    infname = getFname("Step1"+name, "AsymptoticLimits", combo, sig=sig)
+    infname = getFname("Step1"+name, "AsymptoticLimits", combo, sig=sig, seed=seed)
     iparams = getParamsTracked(infname, 0.5)
     ieparams = getParamsTracked(infname, 0.5, includeParam=False, includeErr=True)
     ivals = OrderedDict()
@@ -49,13 +49,12 @@ def main(sig,name,step,combo,init):
     # get likelihood scan vals
     import ROOT as r
     r.gROOT.SetBatch(True)
-    mdfname = getFname(step+name, "MultiDimFit", combo, sig=sig)
+    mdfname = getFname(step+name, "MultiDimFit", combo, sig=sig, seed=seed)
     mdffile = r.TFile.Open(mdfname)
     try:
         mdftree = mdffile.Get("limit")
     except:
-        print("Could not open {}".format(mdfname))
-        sys.exit(1)
+        raise RuntimeError("Could not open {}".format(mdfname))
     allParams = ":".join(["trackedParam_{p}:trackedError_{p}".format(p=p) for p in ivals])
     allQtys = "deltaNLL:r:{}".format(allParams)
     # get bestfit vals first
@@ -166,6 +165,7 @@ if __name__=="__main__":
     parser.add_argument("-s", "--step", dest="step", type=str, default="Test", help="step name (higgsCombine[step][name])")
     parser.add_argument("-c", "--combo", dest="combo", type=str, required=True, choices=sorted(list(getCombos())), help="combo to plot")
     parser.add_argument("-I", "--init", dest="init", default=False, action='store_true', help="use existing initial values of parameters")
+    parser.add_argument("-e", "--seed", dest="seed", type=str, default=None, help="random seed (if toy data)")
     args = parser.parse_args()
 
-    main(makeSigDict(args.sig),args.name,args.step,args.combo,args.init)
+    main(makeSigDict(args.sig),args.name,args.step,args.combo,args.seed,args.init)

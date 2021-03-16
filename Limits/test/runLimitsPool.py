@@ -1,4 +1,4 @@
-import os,sys,shlex
+import os,sys,shlex,traceback
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from multiprocessing import Pool
 import getBiasArgs
@@ -7,14 +7,14 @@ from paramUtils import fprint, runCmd, alphaVal, makeSigDict, getParamNames, get
 import plotParamsScan
 from makePostfitPlot import makePostfitPlot
 
-def getFromToyfile(toyfile,match,replace=True,delim='_'):
+def getFromToyfile(toyfile,match,replace=True,delim='.'):
     def match_text(item,match):
         return match in item
     def match_int(item,match):
         try:
             int(item)
             return True
-        else:
+        except:
             return False
 
     # special case
@@ -65,7 +65,8 @@ def doLimit(info):
         frzargs.append("rgx{mcstat_.*}")
 
     cargs = args.args
-    cargs += " --setParameters {} --freezeParameters {} --trackParameters {} --trackErrors {} --keyword-value ana={} -n {}".format(
+    if len(cargs)>0: cargs += " "
+    cargs += "--setParameters {} --freezeParameters {} --trackParameters {} --trackErrors {} --keyword-value ana={} -n {}".format(
         ','.join(setargs), ','.join(frzargs), ','.join(trkargs), ','.join(treargs), args.combo, args.cname
     )
     if "Calls" in args.mod:
@@ -75,7 +76,7 @@ def doLimit(info):
     datacards = []
     for region in args.combo_regions:
         datacards.append(getDname(signame,region).replace(".txt","{}.txt".format(args.suff)))
-    dcfname = getDCname(args.signal,args.combo)
+    dcfname = getDCname(sig,args.combo)
 
     outputs = []
     fprint("Calculating limit for {}...".format(signame))
@@ -94,7 +95,7 @@ def doLimit(info):
         # to use initCLs and manualCLs together, specify params to extract
         if args.initCLs:
             extra += " -i shapeBkg high low"
-        command = 'python ../manualCLs.py {} -a "{}" -n {}'.format(extra,cargs,args.combo+"_"+args.cname)
+        command = 'python ../manualCLs.py {} -a="{}" -n {}'.format(extra,cargs,args.combo+"_"+args.cname)
     else:
         command = "combine -M AsymptoticLimits "+cargs
     outputs.append(command)
@@ -102,15 +103,21 @@ def doLimit(info):
         outputs.append(runCmd(command))
         if args.plots:
             for step in ["Asimov","Observed"]:
-                plotParamsScan.main(sig,args.cname,step,args.combo,args.init)
+                try:
+                    plotParamsScan.main(sig,args.cname,step,args.combo,args.seedname,args.init)
+                except Exception as e:
+                    outputs.append(traceback.format_exc())
             # currently, postfit files only created for ManualCLs
             if args.manualCLs:
                 obs = len(args.toyfile)==0
-                dfile = "hists.{}.{}.root".format(getFromToyfile(args.toyfile,"higgsCombine"), getFromToyfile(args.toyfile,"#",delim='.')) if not obs else ""
-                injected = getFromToyfile(args.toyfile,"mZprime") if "sigtoy" in args.toyfile else ""
+                dfile = "hists.{}.{}.root".format(getFromToyfile(args.toyfile,"higgsCombine").replace("/",""), getFromToyfile(args.toyfile,"#")) if not obs else ""
+                injected = int(getFromToyfile(args.toyfile,"mZprime")) if "sigtoy" in args.toyfile else 0
                 for q in [-3, -2, -1]:
                     for region in args.combo_regions:
-                        makePostfitPlot(sig,args.cname,"ManualCLs",q,dfile,args.datacard_dir,obs,injected,args.combo,region,True)
+                        try:
+                            makePostfitPlot(sig,args.cname,"ManualCLsFit",q,dfile,args.datacards,obs,injected,args.combo,region,True)
+                        except Exception as e:
+                            outputs.append(traceback.format_exc())
     os.chdir(args.pwd)
 
     return outputs
@@ -151,10 +158,7 @@ def main(args):
         for sig in args.signals:
             mname = "ManualCLs" if args.manualCLs and not "-A" in args.extra else "AsymptoticLimits"
             sname = "StepA" if args.manualCLs and "-A" in args.extra else ""
-            seedname = None
-            if len(args.toyfile)>0 and not args.asimov:
-                seedname = args.toyfile.split('.')[-2]
-            fname = getFname(sname+cname,mname,combo,sig=sig,seed=seedname)
+            fname = getFname(sname+cname,mname,combo,sig=sig,seed=args.seedname)
             append = False
             if args.dry_run:
                 append = True
@@ -205,6 +209,11 @@ if __name__=="__main__":
     parser.add_argument("-p", "--plots", dest="plots", default=False, action="store_true", help="make plots")
     parser.add_argument("--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/", help="datacard histogram location (for postfit plots)")
     args = parser.parse_args()
+
+    args.seedname = None
+    if len(args.toyfile)>0 and not args.asimov:
+        args.seedname = args.toyfile.split('.')[-2]
+        args.args = "{}-s {}".format(" "*len(args.args), args.seedname)
 
     # parse signal info
     with open('dict_xsec_Zprime.txt','r') as xfile:

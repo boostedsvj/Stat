@@ -1,7 +1,8 @@
-import os,sys
+import os,sys,shutil
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from glob import glob
 from collections import OrderedDict
-from paramUtils import getParamsTracked, getFname, getSigname, getSignameShort, getCombos, runCmds
+from paramUtils import getParamsTracked, getFname, makeSigDict, getSigname, getSignameShort, getCombos, runCmds, getChannel, fprint
 
 input_template = """INPUT
 input/input_svj_stack_dijetmtdetahad_2017.txt
@@ -49,36 +50,41 @@ region_info = {
     "lowSVJ2": {"alt": 2, "main": 2, "legname": "low-SVJ2"},
 }
 
-def actuallyPlot(input,postfname,data_file):
+def actuallyPlot(signame,input,postfname,data_file):
     current_dir = os.getcwd()
     analysis_dir = os.path.expandvars("$CMSSW_BASE/src/Analysis/")
     # check for data file in main dir
     if not os.path.isfile(data_file):
         data_file = "../"+data_file
+    # get paths before changing directories
+    input_path = os.path.abspath(input)
+    postfname_path = os.path.abspath(postfname)
+    data_file_path = os.path.abspath(data_file)
     # link files to Analysis folders, run root command
-    link_commands = [
-        "ln -s {} {}/input".format(os.path.abspath(input),analysis_dir),
-        "ln -s {} {}/test".format(os.path.abspath(postfname),analysis_dir),
-        "ln -s {} {}/test".format(os.path.abspath(data_file),analysis_dir),
-    ]
-    runCmds(link_commands)
     os.chdir(analysis_dir)
-    outputs = "*.png *.pdf {}*.root".format(ofile_prefix)
-    root_commands = [
+    commands = [
+        "ln -sf {} {}/input".format(input_path,analysis_dir),
+        "mkdir -p {}/test/{}".format(analysis_dir,signame),
+        "ln -sf {} {}/test/{}".format(postfname_path,analysis_dir,signame),
+        "ln -sf {} {}/test".format(data_file_path,analysis_dir),
         """root -b -l -q 'KPlotDriver.C+(".",{{"{}"}},{{}},1)'""".format("input/{}".format(input)),
-        "ls {}".format(outputs),
-        "mv {} {}".format(outputs, current_dir),
     ]
-    runCmds(root_commands)
+    runCmds(commands)
+    outputs = glob("*.png") + glob("*.pdf") + glob("{}*.root".format(ofile_prefix))
+    for output in outputs:
+        shutil.move(output,os.path.join(current_dir,os.path.basename(output)))
+    fprint(' '.join(outputs))
     os.chdir(current_dir)
 
 def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, injected, combo, region, do_plot=False):
-    ch = "ch1" if "high" in region else "ch2"
+    ch = getChannel(region)
+    seedname = None
+    if not obs: seedname = data_file.split('.')[-2]
 
     signame = getSignameShort(sig)
     signamesafe = getSigname(sig)
     dtype = "obs" if obs else "toy"
-    iname = "input_svj_mt_fit_{dtype}_{region}_{name}_{qname}_{sig}.txt".format(dtype=dtype,region=region,mass=mass,name=name,qname=quantile_info[quantile]["name"],sig=signamesafe)
+    iname = "input_svj_mt_fit_{dtype}_{region}_{name}_{qname}_{sig}.txt".format(dtype=dtype,region=region,name=name,qname=quantile_info[quantile]["name"],sig=signamesafe)
     rinfo = region_info[region]
     ftype = ""
     finfo = None
@@ -88,7 +94,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
     for q in [quantile]:
         qinfo = quantile_info[q]
 
-        fname = getFname(sig, name, method, combo)
+        fname = getFname(name, method, combo, sig=sig, seed=seedname)
         postfname = fname.replace("higgsCombine","multidimfitPostfit{:.3f}".format(q)).replace("{}.".format(method),"")
         params = getParamsTracked(fname, quantile)
         if len(params)==0: return ""
@@ -141,14 +147,14 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
 
     data = data_template.format(
         dtype = dtype,
-        dfile = sigfileorig if obs else data_file,
+        dfile = sigfileorig if obs else "test/"+data_file if do_plot else data_file,
         hdir = hdir,
         inj = "" if obs else " (no signal)" if injected==0 else " (m_{{Z'}} = {:.1f} TeV)".format(float(injected)/1000.)
     )
 
     options = options_template.format(
         # should quantiles be included here?
-        psuff = "_{}_fit_{}_{}_{}_mZprime{}".format(dtype,region,name,quantile_info[quantile]["name"],mass),
+        psuff = "_{}_fit_{}_{}_{}_{}".format(dtype,region,name,quantile_info[quantile]["name"],signamesafe),
         etxt = rinfo["legname"],
         fitlist = ','.join(fits),
         signames = ','.join(sigs),
@@ -168,13 +174,13 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
         ]
         ifile.write('\n'.join(lines))
 
-    if do_plot: actuallyPlot(iname,postfname,data_file)
+    if do_plot: actuallyPlot(signamesafe,iname,postfname,data_file)
 
     return iname
 
 if __name__=="__main__":
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument("-S","--signal", dest="signals", metavar=("mZprime","mDark","rinv","alpha"), type=str, required=True, nargs=4, help="signal parameters")
+    parser.add_argument("-S","--signal", dest="signal", metavar=("mZprime","mDark","rinv","alpha"), type=str, required=True, nargs=4, help="signal parameters")
     parser.add_argument("-n", "--name", dest="name", type=str, default="Test", help="test name (higgsCombine[name])")
     parser.add_argument("-M", "--method", dest="method", type=str, default="AsymptoticLimits", help="method name (higgsCombineTest.[method])")
     parser.add_argument("-d", "--data", dest="data", type=str, default="", help="data file name (taken from datacards if obs)")
@@ -188,6 +194,8 @@ if __name__=="__main__":
 
     if not args.obs and len(args.data)==0:
         parser.error("Data file must be specified if using toy data")
+
+    args.signal = makeSigDict(args.signal)
 
     combos = getCombos()
 

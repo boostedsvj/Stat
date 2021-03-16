@@ -104,7 +104,7 @@ def getPname(region, alt=False):
 def getFname(name, method, combo, sig=None, prefix="higgsCombine", seed=None):
     fname = "{}{}.{}.mH120{}{}.root".format(prefix,name,method,".ana{}".format(combo) if len(combo)>0 else "","."+str(seed) if seed is not None else "")
     if sig is not None:
-        signame = getSigname(sig)
+        signame = getSignameCheck(sig)
         return getXname(signame,fname)
     else:
         return fname
@@ -131,7 +131,8 @@ def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extra
     condition = "abs(quantileExpected-{})<0.001".format(quantile)
     if len(extraCondition)>0: condition += "&&{}".format(extraCondition)
     results = {}
-    if not os.path.exists(fname): return results
+    if not os.path.exists(fname):
+        raise RuntimeError("Could not open file: {}".format(fname))
     file = r.TFile.Open(fname)
     tree = file.Get("limit")
 
@@ -152,7 +153,8 @@ def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extra
 
     # deliver dict of params:values
     n = tree.Draw(':'.join(params),condition,"goff")
-    if n<=0: return results
+    if n<=0:
+        raise RuntimeError("Could not get:\n\tparameters: {}\n\tcondition: {}\n\tfrom limit tree in file {}".format(params,condition,fname))
 
     results = {p:tree.GetVal(i)[0] for i,p in enumerate(params)}
     return results
