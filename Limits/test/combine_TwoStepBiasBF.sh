@@ -79,7 +79,7 @@ fi
 cmdGen="combine ${DC_NAME} -M GenerateOnly -n ${genName} -t ${nTOYS} --toysFrequentist --saveToys --expectSignal ${expSig} --bypassFrequentistFit --saveWorkspace -s 123456 -v -1 --setParameters $SetArgGen --freezeParameters $FrzArgGen"
 
 #cmdMDFb="combine ${DC_NAME} -M MultiDimFit -n ${fitName} --saveWorkspace --rMin -80 --rMax 80 --X-rtd MINIMIZER_MaxCalls=100000 --setParameters $SetArgFit --freezeParameters $FrzArgFit"
-cmdFit="combine ${DC_NAME} -M FitDiagnostics -n ${fitName} --toysFile higgsCombine${genName}.GenerateOnly.mH120.123456.root -t ${nTOYS} --toysFrequentist --saveToys --expectSignal ${expSig} --rMin ${rMin} --rMax ${rMax} --savePredictionsPerToy --bypassFrequentistFit --X-rtd MINIMIZER_MaxCalls=100000 --setParameters $SetArgFit --freezeParameters $FrzArgFit --trackParameters $TrkArgFit"
+cmdFit="combine ${DC_NAME} -M FitDiagnostics -v -1 -n ${fitName} --toysFile higgsCombine${genName}.GenerateOnly.mH120.123456.root -t ${nTOYS} --toysFrequentist --saveToys --expectSignal ${expSig} --rMin ${rMin} --rMax ${rMax} --savePredictionsPerToy --bypassFrequentistFit --X-rtd MINIMIZER_MaxCalls=100000 --setParameters $SetArgFit --freezeParameters $FrzArgFit --trackParameters $TrkArgFit"
 
 echo "combine commands:"
 #echo ${cmdMDFa} # | tee /dev/stderr

@@ -98,7 +98,7 @@ fi
 
 cmdGen="combine ${DC_NAME_ALL} -M GenerateOnly -n ${genName} -t ${nTOYS} --toysFrequentist --saveToys --expectSignal ${expSig} --bypassFrequentistFit --saveWorkspace -s 123456 -v -1 --setParameters $SetArgGenAll --freezeParameters $FrzArgGenAll"
 
-cmdFit="combine ${DC_NAME_ALL} -M FitDiagnostics -n ${fitName} --toysFile higgsCombine${genName}.GenerateOnly.mH120.123456.root -t ${nTOYS} --toysFrequentist --saveToys --expectSignal ${expSig} --rMin ${rMin} --rMax ${rMax} --savePredictionsPerToy --bypassFrequentistFit --X-rtd MINIMIZER_MaxCalls=100000 --setParameters $SetArgFitAll --freezeParameters $FrzArgFitAll --trackParameters $TrkArgFitAll"
+cmdFit="combine ${DC_NAME_ALL} -M FitDiagnostics -v -1 -n ${fitName} --toysFile higgsCombine${genName}.GenerateOnly.mH120.123456.root -t ${nTOYS} --toysFrequentist --saveToys --expectSignal ${expSig} --rMin ${rMin} --rMax ${rMax} --savePredictionsPerToy --bypassFrequentistFit --X-rtd MINIMIZER_MaxCalls=100000 --setParameters $SetArgFitAll --freezeParameters $FrzArgFitAll --trackParameters $TrkArgFitAll"
 
 echo "combine commands:"
 echo ${cmdGen} # | tee /dev/stderr
