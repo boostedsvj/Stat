@@ -51,7 +51,9 @@ def main(args):
             # fix error bars
             for b in range(hist.GetNbinsX()):
                 bin = b+1
-                hist.SetBinError(bin,PoissonErrorUp(hist.GetBinContent(bin)))
+                content = hist.GetBinContent(bin)
+                if content>0:
+                    hist.SetBinError(bin,PoissonErrorUp(content))
             tmpdir = outfile.mkdir(fullregion)
             tmpdir.cd()
             hist.SetName("data_toy")
