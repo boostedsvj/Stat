@@ -1,6 +1,7 @@
 import os,sys,shlex,traceback
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from multiprocessing import Pool
+from StringIO import StringIO
 import getBiasArgs
 from Stat.Limits.bruteForce import makeVarInfoList
 from paramUtils import fprint, runCmd, alphaVal, makeSigDict, getParamNames, getSigname, getFname, getWname, getDname, getDCname, getPname, getCombos, getInitFromBF
@@ -102,6 +103,9 @@ def doLimit(info):
     if not args.dry_run:
         outputs.append(runCmd(command))
         if args.plots:
+            # capture all printouts
+            backup_stdout = sys.stdout
+            sys.stdout = StringIO()
             for step in ["Asimov","Observed"]:
                 try:
                     plotParamsScan.main(sig,args.cname,step,args.combo,args.seedname,args.init)
@@ -118,6 +122,9 @@ def doLimit(info):
                             makePostfitPlot(sig,args.cname,"ManualCLsFit",q,dfile,args.datacards,obs,injected,args.combo,region,True)
                         except Exception as e:
                             outputs.append(traceback.format_exc())
+            # restore stdout
+            outputs.append(sys.stdout.getvalue())
+            sys.stdout = backup_stdout
     os.chdir(args.pwd)
 
     return outputs

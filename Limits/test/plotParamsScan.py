@@ -17,7 +17,7 @@ def printCan(can,oname):
             pformat = "eps"
         can.Print(oname+"."+pformat,pformat)
         if pformat=="eps":
-            os.system("epstopdf {0} && rm {0}".format(oname+".eps"))
+            os.system("epstopdf {0} |& grep -q -v 'no version information available' || true && rm {0}".format(oname+".eps"))
 
 def main(sig,name,step,combo,seed,init):
     combos = getCombos()

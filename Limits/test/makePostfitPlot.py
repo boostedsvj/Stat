@@ -19,6 +19,7 @@ vstring:fits[{fitlist}]
 vstring+:chosensets[{signames}]
 vstring+:numers[{signames}]
 string:rootfile[{ofile}]
+bool:treesuffix[0]
 """
 
 fit_template = "{fitname}\ts:fn[{fnname}]\tvd:pars[1,{pvals}]\td:yield[{yieldval}]\ts:legname[{legname}]\tin:input[input/input_svj_mt_fit_opt.txt]\tb:legpars[0]\tc:linecolor[{fitcol}]"
