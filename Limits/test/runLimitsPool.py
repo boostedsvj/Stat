@@ -166,6 +166,7 @@ def main(args):
             mname = "ManualCLs" if args.manualCLs and not "-A" in args.extra else "AsymptoticLimits"
             sname = "StepA" if args.manualCLs and "-A" in args.extra else ""
             fname = getFname(sname+cname,mname,combo,sig=sig,seed=args.seedname)
+            if len(args.hadd_dir)>0: fname = args.hadd_dir+"/"+fname
             append = False
             if args.dry_run:
                 append = True
@@ -198,6 +199,7 @@ if __name__=="__main__":
     parser.add_argument("-m", "--mod", dest="mod", type=str, default=[], choices=["Alt","S0","Nostat","Calls"], nargs="*", help="modification(s)")
     parser.add_argument("-j", "--just-hadd", dest="just_hadd", default=False, action="store_true", help="don't run any combine commands, just hadd")
     parser.add_argument("--no-hadd", dest="no_hadd", default=False, action="store_true", help="don't hadd")
+    parser.add_argument("--hadd-dir", dest="hadd_dir", type=str, default="", help="directory for files to be hadded if not local")
     parser.add_argument("-M", "--manualCLs", dest="manualCLs", default=False, action='store_true', help="use manual CLs algorithm")
     init_group = parser.add_mutually_exclusive_group()
     init_group.add_argument("-i", "--initCLs", dest="initCLs", default=False, action='store_true', help="use initialized CLs algorithm")
