@@ -2,7 +2,9 @@ import os,sys,shutil
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from glob import glob
 from collections import OrderedDict
+from array import array
 from paramUtils import getParamsTracked, getFname, makeSigDict, getSigname, getSignameShort, getCombos, runCmds, getChannel, fprint
+from Stat.Limits.bruteForce import silence
 
 input_template = """INPUT
 input/input_svj_stack_dijetmtdetahad_2017.txt
@@ -11,6 +13,7 @@ input/input_svj_mt_hist_full.txt
 """
 
 ofile_prefix = "test/fit"
+bandname = "errorband"
 
 options_template = """OPTION
 string+:printsuffix[{psuff}]
@@ -22,7 +25,7 @@ string:rootfile[{ofile}]
 bool:treesuffix[0]
 """
 
-fit_template = "{fitname}\ts:fn[{fnname}]\tvd:pars[1,{pvals}]\td:yield[{yieldval}]\ts:legname[{legname}]\tin:input[input/input_svj_mt_fit_opt.txt]\tb:legpars[0]\tc:linecolor[{fitcol}]"
+fit_template = "{fitname}\ts:fn[{fnname}]\tvd:pars[1,{pvals}]\td:yield[{yieldval}]\ts:legname[{legname}]\tin:input[input/input_svj_mt_fit_opt.txt]\tb:legpars[0]\tc:linecolor[{fitcol}]\ts:bandfile[test/{signame}/{bandfile}]\ts:bandname[{bandname}]\tc:glinecolor[{fitcol}]\tc:gfillcolor[kGray + 1]"
 
 set_template = """hist\tmc\t{signamefull}\ts:legname[{legname}]\tc:color[{sigcol}]\ti:linestyle[7]\ti:panel[0]\tvs:fits[]\t{signorm}
 \tbase\text\t{signamefull}\ts:extfilename[{sigfile}]\ts:exthisto_dir[{hdir}]\tvs:exthisto_in[{signamesafe}]\tvs:exthisto_out[MTAK8]"""
@@ -51,7 +54,56 @@ region_info = {
     "lowSVJ2": {"alt": 2, "main": 2, "legname": "low-SVJ2"},
 }
 
+def makeBandFileName(iname):
+    return iname.replace("input_","errorband_",1).replace(".txt",".root")
+
+def makeErrorBand(iname,fname,postfname,wsname,region,ftype,norm,fitresname="fit_mdf"):
+    import ROOT as r
+    r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
+    silence()
+
+    ch = getChannel(region)
+    f = r.TFile.Open(fname)
+    ws = f.Get(wsname)
+    pdfname = "Bkg{}_{}_2018".format("_Alt" if ftype=="alt" else "",region)
+    pdf = ws.pdf(pdfname)
+    var = ws.var("mH{}_2018".format(region))
+    pf = r.TFile.Open(postfname)
+    fitres = pf.Get(fitresname)
+
+    # maybe unneeded
+    data = ws.data("data_obs")
+    # combine output is always RooDataSet w/ both regions (not RooDataHist)
+    if type(data)==r.RooDataSet:
+        data = data.reduce("CMS_channel==CMS_channel::{}".format(ch))
+
+    # borrowed from ftest.py
+    frame = var.frame(r.RooFit.Title(""))
+    pdf.plotOn(frame, r.RooFit.VisualizeError(fitres, 1, False), r.RooFit.Normalization(norm, r.RooAbsReal.NumEvent))
+    # find the error band
+    band = None
+    for i in range(int(frame.numItems())):
+        bname = frame.nameOf(i)
+        if "errorband" in bname:
+            band = frame.getCurve(bname)
+            break
+
+    # get rid of unwanted end points
+    pruned = [(band.GetX()[j],band.GetY()[j]) for j in range(band.GetN()) if band.GetY()[j]>0]
+    bx, by = zip(*pruned)
+    bx = array('d',bx)
+    by = array('d',by)
+    gband = r.TGraph(len(bx),bx,by)
+
+    oname = makeBandFileName(iname)
+    ofile = r.TFile.Open(oname,"RECREATE")
+    ofile.cd()
+    gband.Write(bandname)
+    ofile.Close()
+    return oname
+
 def actuallyPlot(signame,input,postfname,data_file):
+    bandfname = makeBandFileName(input)
     current_dir = os.getcwd()
     analysis_dir = os.path.expandvars("$CMSSW_BASE/src/Analysis/")
     # check for data file in main dir
@@ -59,6 +111,7 @@ def actuallyPlot(signame,input,postfname,data_file):
         data_file = "../"+data_file
     # get paths before changing directories
     input_path = os.path.abspath(input)
+    bandfname_path = os.path.abspath(bandfname)
     postfname_path = os.path.abspath(postfname)
     data_file_path = os.path.abspath(data_file)
     # link files to Analysis folders, run root command
@@ -66,6 +119,7 @@ def actuallyPlot(signame,input,postfname,data_file):
     commands = [
         "ln -sf {} {}/input".format(input_path,analysis_dir),
         "mkdir -p {}/test/{}".format(analysis_dir,signame),
+        "ln -sf {} {}/test/{}".format(bandfname_path,analysis_dir,signame),
         "ln -sf {} {}/test/{}".format(postfname_path,analysis_dir,signame),
         "ln -sf {} {}/test".format(data_file_path,analysis_dir),
         """root -b -l -q 'KPlotDriver.C+(".",{{"{}"}},{{}},1)'""".format("input/{}".format(input)),
@@ -96,6 +150,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
         qinfo = quantile_info[q]
 
         fname = getFname(name, method, combo, sig=sig, seed=seedname)
+        indfname = fname.replace("higgsCombine","higgsCombinePostfit{:.3f}".format(q)).replace("{}.".format(method),"MultiDimFit.")
         postfname = fname.replace("higgsCombine","multidimfitPostfit{:.3f}".format(q)).replace("{}.".format(method),"")
         params = getParamsTracked(fname, quantile)
         if len(params)==0: return ""
@@ -108,14 +163,21 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
             finfo = function_info[(ftype,rinfo[ftype])]
         fitname = "{}_{}".format(finfo["name"],qinfo["name"])
 
+        # get error band
+        norm = params["trackedParam_n_exp_final_bin{}_proc_roomultipdf".format(ch)]
+        bandfname = makeErrorBand(iname,indfname,postfname,"w",region,ftype,norm)
+
         fits[fitname] = fit_template.format(
             fitname = fitname,
             fnname = finfo["formula"],
             pvals = ','.join(pvals),
             # yieldval must be multiplied by bin width
-            yieldval = str(params["trackedParam_n_exp_final_bin{}_proc_roomultipdf".format(ch)]*100),
+            yieldval = str(norm*100),
             legname = "{}, {}".format(finfo["legname"],qinfo["legname"]),
             fitcol = qinfo["color"],
+            bandfile = bandfname,
+            bandname = bandname,
+            signame = signamesafe,
         )
 
         # no need to show signal for b-only

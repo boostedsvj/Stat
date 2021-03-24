@@ -598,7 +598,7 @@ def step4(args, products):
         # not needed when params already known
         args4 = removeArg(args4,"MINIMIZER_MaxCalls",before=1,exact=False)
         args4 = handleInitArgs(args4, products["init_args"])
-        cmd4 = "combine -M MultiDimFit --saveShapes {} {} {}".format(extra,args4,args.fitopts)
+        cmd4 = "combine -M MultiDimFit --saveShapes --saveWorkspace --saveFitResult {} {} {}".format(extra,args4,args.fitopts)
         fprint(cmd4)
         logfname4 = "log_step4q{}_{}.log".format(q,args.name)
         ofname4 = ""

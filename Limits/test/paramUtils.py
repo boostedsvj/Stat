@@ -174,6 +174,7 @@ def getInitFromBF(fname, wsname, pdfname, region=None):
         fname2 = "fitResults_{}.root".format(region)
         if not os.path.isfile(fname2): fname2 = "../"+fname2
         file2 = r.TFile.Open(fname2)
+        if file2==None: raise RuntimeError("Could not open file: {}".format(fname2))
         result = file2.Get("fitresult_{}{}_data_obs".format(pdfname,npars))
 
         setargs = {p.name:result.floatParsFinal().find(p.name).getValV() for p in pars}
