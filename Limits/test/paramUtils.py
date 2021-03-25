@@ -49,6 +49,12 @@ def PoissonErrorUp(N):
     U = r.Math.gamma_quantile_c(alpha/2,N+1,1.)
     return U-N
 
+def OpenFile(fname):
+    import ROOT as r
+    f = r.TFile.Open(fname)
+    if f==None: raise RuntimeError("Could not open ROOT file: {}".format(fname))
+    return f
+
 # various signal name handling
 def getParamNames():
     params = ["mZprime", "mDark", "rinv", "alpha"]
@@ -102,12 +108,24 @@ def getPname(region, alt=False):
 
 # combine filename
 def getFname(name, method, combo, sig=None, prefix="higgsCombine", seed=None):
-    fname = "{}{}.{}.mH120{}{}.root".format(prefix,name,method,".ana{}".format(combo) if len(combo)>0 else "","."+str(seed) if seed is not None else "")
+    isCombine = prefix=="higgsCombine"
+    fname = "{}{}{}{}{}{}.root".format(
+        prefix,
+        name,
+        ".{}".format(method) if isCombine else "",
+        ".mH120",
+        ".ana{}".format(combo) if len(combo)>0 else "",
+        ".{}".format(seed) if seed is not None else ""
+    )
     if sig is not None:
         signame = getSignameCheck(sig)
         return getXname(signame,fname)
     else:
         return fname
+
+def getRname(region, alt, npars):
+    rname = "fitresult_{}{}_data_obs".format(getPname(region,alt),npars)
+    return rname
 
 # extract tracked params from trees
 def getBranches(tree, matches=None, exact=False):
@@ -131,9 +149,7 @@ def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extra
     condition = "abs(quantileExpected-{})<0.001".format(quantile)
     if len(extraCondition)>0: condition += "&&{}".format(extraCondition)
     results = {}
-    if not os.path.exists(fname):
-        raise RuntimeError("Could not open file: {}".format(fname))
-    file = r.TFile.Open(fname)
+    file = OpenFile(fname)
     tree = file.Get("limit")
 
     matches = []
@@ -163,7 +179,7 @@ def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extra
 def getInitFromBF(fname, wsname, pdfname, region=None):
     import ROOT as r
     r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
-    file = r.TFile.Open(fname)
+    file = OpenFile(fname)
     ws = file.Get(wsname)
     pdf = ws.pdf(pdfname)
     pars = makeVarInfoList(pdf.getPars())
@@ -173,9 +189,8 @@ def getInitFromBF(fname, wsname, pdfname, region=None):
         # need to use fit results because later saved workspaces don't track the errors
         fname2 = "fitResults_{}.root".format(region)
         if not os.path.isfile(fname2): fname2 = "../"+fname2
-        file2 = r.TFile.Open(fname2)
-        if file2==None: raise RuntimeError("Could not open file: {}".format(fname2))
-        result = file2.Get("fitresult_{}{}_data_obs".format(pdfname,npars))
+        file2 = OpenFile(fname2)
+        result = file2.Get(getRname(region,"Alt" in pdfname, npars))
 
         setargs = {p.name:result.floatParsFinal().find(p.name).getValV() for p in pars}
         errargs = {p.name:result.floatParsFinal().find(p.name).getError() for p in pars}

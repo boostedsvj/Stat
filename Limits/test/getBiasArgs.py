@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+from paramUtils import OpenFile
 
 def get_param_names(ws, region, fn):
     allVars = ws.allVars()
@@ -17,7 +18,7 @@ def get_param_names(ws, region, fn):
 
 def main(fname, wsname, region, fn, suff="", verbose=True):
     from ROOT import TFile, RooWorkspace
-    file = TFile.Open(fname)
+    file = OpenFile(fname)
     ws = file.Get(wsname)
 
     other_fn = int(not fn)

@@ -108,7 +108,9 @@ def doLimit(info):
             sys.stdout = StringIO()
             for step in ["Asimov","Observed"]:
                 try:
-                    plotParamsScan.main(sig,args.cname,step,args.combo,args.seedname,args.init)
+                    pargs = [sig,args.cname,step,args.combo,args.seedname,args.init]
+                    outputs.append("plotParamsScan.main({})".format(','.join('"{}"'.format(p) if isinstance(p,str) else str(p) for p in pargs)))
+                    plotParamsScan.main(*pargs)
                 except Exception as e:
                     outputs.append(traceback.format_exc())
             # currently, postfit files only created for ManualCLs
@@ -119,7 +121,9 @@ def doLimit(info):
                 for q in [-3, -2, -1]:
                     for region in args.combo_regions:
                         try:
-                            makePostfitPlot(sig,args.cname,"ManualCLsFit",q,dfile,args.datacards,obs,injected,args.combo,region,True)
+                            pargs = [sig,args.cname,"ManualCLsFit",q,dfile,args.datacards,obs,injected,args.combo,region,None,None,True]
+                            outputs.append("makePostfitPlot({})".format(','.join('"{}"'.format(p) if isinstance(p,str) else str(p) for p in pargs)))
+                            makePostfitPlot(*pargs)
                         except Exception as e:
                             outputs.append(traceback.format_exc())
             # restore stdout

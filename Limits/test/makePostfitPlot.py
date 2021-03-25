@@ -3,7 +3,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from glob import glob
 from collections import OrderedDict
 from array import array
-from paramUtils import getParamsTracked, getFname, makeSigDict, getSigname, getSignameShort, getCombos, runCmds, getChannel, fprint
+from paramUtils import getParamsTracked, getFname, makeSigDict, getSigname, getSignameShort, getCombos, runCmds, getChannel, fprint, getPname, getRname, getInitFromBF, OpenFile
 from Stat.Limits.bruteForce import silence
 
 input_template = """INPUT
@@ -30,7 +30,7 @@ fit_template = "{fitname}\ts:fn[{fnname}]\tvd:pars[1,{pvals}]\td:yield[{yieldval
 set_template = """hist\tmc\t{signamefull}\ts:legname[{legname}]\tc:color[{sigcol}]\ti:linestyle[7]\ti:panel[0]\tvs:fits[]\t{signorm}
 \tbase\text\t{signamefull}\ts:extfilename[{sigfile}]\ts:exthisto_dir[{hdir}]\tvs:exthisto_in[{signamesafe}]\tvs:exthisto_out[MTAK8]"""
 
-data_template = """hist\tdata\tdata\ti:panel[1]\ts:legname[{dtype} data{inj}]\tb:yieldnorm[0]
+data_template = """hist\tdata\tdata\ti:panel[1]\ts:legname[{dtype} data{inj}]\tb:yieldnorm[0]\tb:poisson[1]
 \tbase\text\tdata\ts:extfilename[{dfile}]\ts:exthisto_dir[{hdir}]\tvs:exthisto_in[data_{dtype}]\tvs:exthisto_out[MTAK8]"""
 
 quantile_info = {
@@ -57,21 +57,13 @@ region_info = {
 def makeBandFileName(iname):
     return iname.replace("input_","errorband_",1).replace(".txt",".root")
 
-def makeErrorBand(iname,fname,postfname,wsname,region,ftype,norm,fitresname="fit_mdf"):
+def makeErrorBand(iname,ws,fitres,region,ftype,norm):
     import ROOT as r
-    r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
     silence()
 
-    ch = getChannel(region)
-    f = r.TFile.Open(fname)
-    ws = f.Get(wsname)
     pdfname = "Bkg{}_{}_2018".format("_Alt" if ftype=="alt" else "",region)
     pdf = ws.pdf(pdfname)
     var = ws.var("mH{}_2018".format(region))
-    pf = r.TFile.Open(postfname)
-    fitres = pf.Get(fitresname)
-
-    # maybe unneeded
     data = ws.data("data_obs")
     # combine output is always RooDataSet w/ both regions (not RooDataHist)
     if type(data)==r.RooDataSet:
@@ -79,6 +71,7 @@ def makeErrorBand(iname,fname,postfname,wsname,region,ftype,norm,fitresname="fit
 
     # borrowed from ftest.py
     frame = var.frame(r.RooFit.Title(""))
+    data.plotOn(frame)
     pdf.plotOn(frame, r.RooFit.VisualizeError(fitres, 1, False), r.RooFit.Normalization(norm, r.RooAbsReal.NumEvent))
     # find the error band
     band = None
@@ -107,23 +100,32 @@ def actuallyPlot(signame,input,postfname,data_file):
     current_dir = os.getcwd()
     analysis_dir = os.path.expandvars("$CMSSW_BASE/src/Analysis/")
     # check for data file in main dir
-    if not os.path.isfile(data_file):
+    data_xrd = data_file.startswith("root://")
+    if not data_xrd and not os.path.isfile(data_file):
         data_file = "../"+data_file
     # get paths before changing directories
     input_path = os.path.abspath(input)
     bandfname_path = os.path.abspath(bandfname)
-    postfname_path = os.path.abspath(postfname)
-    data_file_path = os.path.abspath(data_file)
+    postfname_path = os.path.abspath(postfname) if postfname is not None else ""
+    data_file_path = os.path.abspath(data_file) if not data_xrd else data_file
     # link files to Analysis folders, run root command
     os.chdir(analysis_dir)
     commands = [
         "ln -sf {} {}/input".format(input_path,analysis_dir),
         "mkdir -p {}/test/{}".format(analysis_dir,signame),
-        "ln -sf {} {}/test/{}".format(bandfname_path,analysis_dir,signame),
-        "ln -sf {} {}/test/{}".format(postfname_path,analysis_dir,signame),
-        "ln -sf {} {}/test".format(data_file_path,analysis_dir),
-        """root -b -l -q 'KPlotDriver.C+(".",{{"{}"}},{{}},1)'""".format("input/{}".format(input)),
+        "ln -sf {} {}/test/{}".format(bandfname_path,analysis_dir,signame)
     ]
+    if postfname is not None:
+        commands.append(
+            "ln -sf {} {}/test/{}".format(postfname_path,analysis_dir,signame)
+        )
+    if not data_xrd:
+        commands.append(
+            "ln -sf {} {}/test".format(data_file_path,analysis_dir)
+        )
+    commands.append(
+        """root -b -l -q 'KPlotDriver.C+(".",{{"{}"}},{{}},1)'""".format("input/{}".format(input))
+    )
     runCmds(commands)
     outputs = glob("*.png") + glob("*.pdf") + glob("{}*.root".format(ofile_prefix))
     for output in outputs:
@@ -131,7 +133,7 @@ def actuallyPlot(signame,input,postfname,data_file):
     fprint(' '.join(outputs))
     os.chdir(current_dir)
 
-def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, injected, combo, region, do_plot=False):
+def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, injected, combo, region, init_dir=None, init_ftype=None, do_plot=False):
     ch = getChannel(region)
     seedname = None
     if not obs: seedname = data_file.split('.')[-2]
@@ -148,24 +150,53 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
     sigs = OrderedDict()
     for q in [quantile]:
         qinfo = quantile_info[q]
+        import ROOT as r
+        r.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
 
-        fname = getFname(name, method, combo, sig=sig, seed=seedname)
-        indfname = fname.replace("higgsCombine","higgsCombinePostfit{:.3f}".format(q)).replace("{}.".format(method),"MultiDimFit.")
-        postfname = fname.replace("higgsCombine","multidimfitPostfit{:.3f}".format(q)).replace("{}.".format(method),"")
-        params = getParamsTracked(fname, quantile)
-        if len(params)==0: return ""
+        # using initial fits from outside combine
+        if init_dir is not None:
+            # input sources
+            postfname = None
+            fname = "{}/ws_{}.root".format(init_dir,region)
+            rname = "{}/fitResults_{}.root".format(init_dir,region)
+            wsname = "BackgroundWS"
+            ftype = init_ftype
 
-        pfit = {p:v for p,v in params.iteritems() if region in p}
-        pvals = [str(v) for p,v in sorted(pfit.iteritems())]
-        # only pick finfo once, because it should be consistent for the region
-        if finfo is None:
-            ftype = "alt" if any("_alt" in p for p in pfit) else "main"
-            finfo = function_info[(ftype,rinfo[ftype])]
-        fitname = "{}_{}".format(finfo["name"],qinfo["name"])
+            # items to obtain: params, norm, workspace, RooFitResult
+            params = getInitFromBF(fname, wsname, getPname(region, ftype=="alt"))
+            params = {item.split("=")[0]:float(item.split("=")[1]) for item in params}
+
+            ftmp = OpenFile(fname)
+            ws = ftmp.Get(wsname)
+            norm = ws.data("data_obs").sumEntries()
+            rtmp = OpenFile(rname)
+            fitres = rtmp.Get(getRname(region, ftype=="alt", len(params)))
+        else:
+            # input sources
+            qfitname = "Postfit{:.3f}".format(q)
+            fname = getFname(name, method, combo, sig=sig, seed=seedname)
+            indfname = getFname(qfitname+name, "MultiDimFit", combo, sig=sig, seed=seedname)
+            postfname = getFname(qfitname+name, "", combo, prefix="multidimfit", sig=sig, seed=seedname)
+
+            # items to obtain: params, norm, workspace, RooFitResult
+            params = getParamsTracked(fname, quantile)
+            if len(params)==0: raise RuntimeError("Could not get tracked parameters for quantile {} from file: {}".format(quantile, fname))
+            ftype = "alt" if any(region in p and "_alt" in p for p in params) else "main"
+            norm = params["trackedParam_n_exp_final_bin{}_proc_roomultipdf".format(ch)]
+
+            iftmp = OpenFile(indfname)
+            ws = iftmp.Get("w")
+            pftmp = OpenFile(postfname)
+            fitres = pftmp.Get("fit_mdf")
 
         # get error band
-        norm = params["trackedParam_n_exp_final_bin{}_proc_roomultipdf".format(ch)]
-        bandfname = makeErrorBand(iname,indfname,postfname,"w",region,ftype,norm)
+        bandfname = makeErrorBand(iname,ws,fitres,region,ftype,norm)
+
+        # common stuff
+        pfit = {p:v for p,v in params.iteritems() if region in p}
+        pvals = [str(v) for p,v in sorted(pfit.iteritems())]
+        finfo = function_info[(ftype,rinfo[ftype])]
+        fitname = "{}_{}".format(finfo["name"],qinfo["name"])
 
         fits[fitname] = fit_template.format(
             fitname = fitname,
@@ -184,7 +215,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
 #        if qinfo["name"]=="bonly": continue
 
         signamefull = "{}_{}".format(signame,qinfo["name"])
-        sigfileorig = "{}/datacard_{}.root".format(datacard_dir,signame)
+        sigfileorig = "{}/datacard_final_{}.root".format(datacard_dir,signame)
         hdir = "{}_2018".format(region)
         if qinfo["name"]=="bonly":
             legname = "{} (r = {:.2g})".format(signame,1)
@@ -237,7 +268,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
         ]
         ifile.write('\n'.join(lines))
 
-    if do_plot: actuallyPlot(signamesafe,iname,postfname,data_file)
+    if do_plot: actuallyPlot(signamesafe,iname,postfname,sigfileorig if obs else data_file)
 
     return iname
 
@@ -250,13 +281,22 @@ if __name__=="__main__":
     parser.add_argument("-o", "--obs", dest="obs", default=False, action="store_true", help="using observed rather than toy data")
     parser.add_argument("-i", "--injected", dest="injected", type=int, default=0, help="injected Zprime mass")
     parser.add_argument("-D", "--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/", help="datacard histogram location (for prefit)")
-    parser.add_argument("-q", "--quantile", dest="quantile", type=float, default=-1, help="quantile to plot fits")
+    parser.add_argument("-q", "--quantile", dest="quantile", type=float, default=-1, choices=list(quantile_info), help="quantile to plot fits")
     parser.add_argument("-c", "--combo", dest="combo", type=str, required=True, choices=sorted(list(getCombos())), help="combo to plot")
+    parser.add_argument("-I", "--use-init", dest="init", type=str, metavar=("dir","fit"), default=[], nargs=2, help="directory from which to use initial fits (outside combine) and fit type (alt or main)")
     parser.add_argument("-p", "--plot", dest="plot", default=False, action="store_true", help="actually make plot(s)")
     args = parser.parse_args()
 
     if not args.obs and len(args.data)==0:
         parser.error("Data file must be specified if using toy data")
+    if len(args.init)>0:
+        if not args.obs:
+            parser.error("Initial fits can only be used for observed data")
+        elif args.quantile!=-2:
+            parser.error("Initial fits can only be used for prefit plot")
+        elif args.init[1] not in ["alt","main"]:
+            parser.error("Unknown fit type {}".format(args.init[1]))
+    else: args.init = [None,None]
 
     args.signal = makeSigDict(args.signal)
 
@@ -264,7 +304,7 @@ if __name__=="__main__":
 
     input_files = []
     for region in combos[args.combo]:
-        tmp = makePostfitPlot(args.signal,args.name,args.method,args.quantile,args.data,args.datacards,args.obs,args.injected,args.combo,region,args.plot)
+        tmp = makePostfitPlot(args.signal,args.name,args.method,args.quantile,args.data,args.datacards,args.obs,args.injected,args.combo,region,args.init[0],args.init[1],args.plot)
         input_files.append(tmp)
     print ' '.join(input_files)
 

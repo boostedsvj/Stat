@@ -1,6 +1,6 @@
 import os,sys,shlex,subprocess
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
-from paramUtils import getParamsTracked, makeSigDict, getSigname, getFname, getWname, getPname, getCombos, getInitFromBF
+from paramUtils import getParamsTracked, makeSigDict, getSigname, getFname, getWname, getPname, getCombos, getInitFromBF, OpenFile
 from collections import OrderedDict
 from array import array
 
@@ -50,11 +50,8 @@ def main(sig,name,step,combo,seed,init):
     import ROOT as r
     r.gROOT.SetBatch(True)
     mdfname = getFname(step+name, "MultiDimFit", combo, sig=sig, seed=seed)
-    mdffile = r.TFile.Open(mdfname)
-    try:
-        mdftree = mdffile.Get("limit")
-    except:
-        raise RuntimeError("Could not open {}".format(mdfname))
+    mdffile = OpenFile(mdfname)
+    mdftree = mdffile.Get("limit")
     allParams = ":".join(["trackedParam_{p}:trackedError_{p}".format(p=p) for p in ivals])
     allQtys = "deltaNLL:r:{}".format(allParams)
     # get bestfit vals first
