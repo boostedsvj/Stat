@@ -33,6 +33,21 @@ def alphaVal(val):
     else: result = float(val)
     return result
 
+def rinvVal(val):
+    result = None
+    if len(val)>1 and val[0]=="0" and val[1]!=".": result = float("0."+val[1:])
+    elif len(val)==1: result = int(val)
+    else: result = float(val)
+    return result
+
+def paramVal(key,val):
+    funcs = {
+        "rinv": rinvVal,
+        "alpha": alphaVal,
+    }
+    if key in funcs: return funcs[key](val)
+    else: return float(val)
+
 def getCombos():
     combos = {
         "cut": ["highCut","lowCut"],
@@ -75,7 +90,7 @@ def getSignameCheck(sig):
 def getSignameShort(sig):
     params = getParamNames()
     sig2 = deepcopy(sig)
-    if len(sig2["rinv"])>1 and sig2["rinv"][0]=="0": sig2["rinv"] = "0."+sig2["rinv"][1:]
+    sig2["rinv"] = str(rinvVal(sig2["rinv"]))
     return "SVJ_"+"_".join(sig2[key] for key in params)
 
 # generic check for signal directory

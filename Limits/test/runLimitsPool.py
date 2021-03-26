@@ -4,7 +4,7 @@ from multiprocessing import Pool
 from StringIO import StringIO
 import getBiasArgs
 from Stat.Limits.bruteForce import makeVarInfoList
-from paramUtils import fprint, runCmd, alphaVal, makeSigDict, getParamNames, getSigname, getFname, getWname, getDname, getDCname, getPname, getCombos, getInitFromBF
+from paramUtils import fprint, runCmd, alphaVal, makeSigDict, getParamNames, getSigname, getFname, getWname, getDname, getDCname, getPname, getCombos, getInitFromBF, paramVal
 import plotParamsScan
 from makePostfitPlot import makePostfitPlot
 
@@ -31,7 +31,7 @@ def doLimit(info):
     signame = getSigname(sig)
     os.chdir(os.path.join(args.pwd,signame))
 
-    params = {key:float(val) if key!="alpha" else alphaVal(val) for key,val in sig.iteritems()}
+    params = {key:paramVal(key,val) for key,val in sig.iteritems()}
     setargs = []
     trkargs = []
     treargs = []
