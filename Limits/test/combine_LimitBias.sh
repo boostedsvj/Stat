@@ -51,8 +51,6 @@ done
 DC_NAME_ALL=datacard_${mZ}_${COMBO}.txt
 combineCards.py $DC_NAMES > $DC_NAME_ALL
 
-rMin=-10
-rMax=10
 
 #print obtained variables
 echo "SetArgGenAll: $SetArgGenAll"
@@ -97,18 +95,27 @@ if false && [ "$genFunc" -ne "$fitFunc" ]; then
 fi
 
 #setting expSig to median value if expSig equals M
+maxValrinj=10
 if [ ${expSig} = "M" ]; then
-    cmdRE="python readREXT.py -f limit_${COMBO}AltManualBFInitSyst.root -z ${mZ}"
+    cmdRE="python readREXT.py -f limit_${COMBO}AltManualBFInitSyst.root -z ${mZ} -m ${maxValrinj}"
     ${cmdRE} >& rext.log
     expSig=$(cat rext.log)
     echo $cmdRE
-    echo "Median Extracted R is ${expSig}"
+    echo "Median Extracted R is ${expSig} max ${maxValrinj}"
     #if [ ${expSig%.*} -gt 9 ]; then
     #    echo "Median Extracted R is ${expSig}. Setting to r_inj to 10."
     #    expSig=10
     #fi
 fi
 
+rMax=10
+
+smallMax=$(bc <<< "${rMax}*1.0 < 3.0*${expSig}")
+if [[ ${smallMax} > 0 ]]; then
+    rMax=$(bc <<< "3.0*${expSig}")
+fi
+
+rMin=-${rMax}
 
 cmdGen="combine ${DC_NAME_ALL} -M GenerateOnly -n ${genName} -t ${nTOYS} --toysFrequentist --saveToys --expectSignal ${expSig} --bypassFrequentistFit --saveWorkspace -s 123456 -v -1 --setParameters $SetArgGenAll --freezeParameters $FrzArgGenAll"
 

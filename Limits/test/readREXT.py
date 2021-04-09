@@ -15,6 +15,7 @@ from Stat.Limits.settings import *
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument("-f", "--file", dest="fName", type=str, required=True, help="fileName")
 parser.add_argument("-z", "--mZprime", dest="mZprime", type=int, required=True, help="mZprime")
+parser.add_argument("-m", "--maxVal", dest="maxVal", type=float, default=0, required=False, help="maximum allowed output (default = 0, no max value)")
 args = parser.parse_args()
 
 _file = rt.TFile.Open("root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Limits/datacards_07tsb_sys/{}".format(args.fName),"read")
@@ -26,8 +27,8 @@ limitTree = _file.Get("limit")
 for iEvt in range(limitTree.GetEntries()):
 	limitTree.GetEvent(iEvt)
 	if limitTree.quantileExpected == 0.5 and limitTree.trackedParam_mZprime == args.mZprime:
-		if limitTree.limit <= 5.0:
-			print "{}".format(limitTree.limit)
+		if (args.maxVal == 0) or (args.maxVal > limitTree.limit):
+			print("{}".format(limitTree.limit))
 		else:
-			print("5")
+			print("{}".format(args.maxVal))
 _file.Close()

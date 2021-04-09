@@ -5,6 +5,8 @@ import subprocess
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
 parser.add_argument("-d", "--eosDir", dest="eosDir", type=str, required=True, help="eos directory for input files (/store/...)")
 parser.add_argument("-l", "--doLimit", dest="doLimit", default=False, action="store_true", help="limit mode (use combined regions)")
+parser.add_argument("-m", "--maxVal", dest="maxVal", type=float, default=0, required=False, help="maximum allowed output (default = 0, no max value)")
+
 args = parser.parse_args()
 
 # runover each SR to fit all 100 toys to the main function
@@ -43,9 +45,9 @@ if args.doLimit:
 	regions = ["cut","bdt"]
 else:
 	regions = ["lowCut","lowSVJ2","highCut","highSVJ2"]
-for expSig in ["SigM"]:#"Sig0","Sig1",
+for expSig in ["SigM"]:#["Sig1","Sig1.5","Sig2","Sig3","Sig5","Sig7","Sig10"]:#,"SigM"]:#["SigM"]:#"Sig0","Sig1",
 	#for funcs in ["GenMainFitMain","GenAltFitMain"]:
-	for funcs in ["GenMainFitAlt","GenAltFitAlt"]:
+	for funcs in ["GenAltFitAlt"]:#"GenMainFitAlt",
 		#setup four TGraphErrors, one for each varying-variable
 		if args.doLimit:
 			vZ_m = {"cut":[[],[],[]],"bdt":[[],[],[]], "name":"varyZ_mean"}
@@ -128,27 +130,38 @@ for expSig in ["SigM"]:#"Sig0","Sig1",
 						if limitTree.trackedParam_mZprime == int(sigPars[0]) and limitTree.quantileExpected == 0.5:
 							injSig = limitTree.limit
 					_file.Close()
+					if args.maxVal>0 and injSig>args.maxVal: injSig = args.maxVal
 				else:
-					injSig = int(expSig[-1:])
+					try:
+						injSig = int(expSig[3:])
+					except ValueError:
+						injSig = float(expSig[3:])
 				print("INJSIG CHECK ************ ", str(injSig))
 				c1.cd(3)
-				tree.Draw("(r-{})/rErr>>h3(50,-5,5)".format(injSig),selection)
+				minPull,maxPull = -5,5
+				nToys = tree.GetEntries()
+				nBins = int((nToys/5.0))
+				tree.Draw("(r-{})/rErr>>h3({},{},{})".format(injSig,nBins,minPull,maxPull),selection)
+				#tree.Draw("(r-{})/rErr>>h4({},{},{})".format(injSig,nBins,minPull,maxPull),selection+"&&rErr<100","same")
 				#tree.Draw("(r-{})/rErr>>h4(50,-5,5)".format(injSig),"fit_status==0","same")
 				#rt.gDirectory.Get("h4").SetLineColor(rt.kRed)
 				rt.gDirectory.Get("h3").SetLineColor(rt.kBlack)
 				rt.gDirectory.Get("h3").SetLineWidth(2)
 				rt.gDirectory.Get("h3").SetAxisRange(0,rt.gDirectory.Get("h3").GetMaximum()*1.1,"Y")
+				#rt.gDirectory.Get("h4").SetLineColor(rt.kRed)
+				#rt.gDirectory.Get("h4").SetLineWidth(2)
+				#rt.gDirectory.Get("h4").SetAxisRange(0,rt.gDirectory.Get("h4").GetMaximum()*1.1,"Y")
 				rt.gPad.Update()
-				gaus = rt.TF1("gaus","gaus(0)", -5, 5)
+				gaus = rt.TF1("gaus","gaus(0)",minPull,maxPull)
 				fitResult = rt.gDirectory.Get("h3").Fit("gaus","RS")
 				gaus.SetLineColor(rt.kBlue)
 				gaus.Draw("same")
 				c1.cd(1)
-				tree.Draw("r>>h1(50,-5,5)".format(injSig),selection)
+				tree.Draw("r>>h1({0},-{1},{1})".format(nBins, max(injSig*1.5,10)),selection)
 				#tree.Draw("r>>h5(160,-40,40)".format(injSig),"fit_status==0","same")
 				#rt.gDirectory.Get("h5").SetLineColor(rt.kRed)
 				c1.cd(2)
-				tree.Draw("rErr>>h2(50,0,5)".format(injSig),selection)
+				tree.Draw("rErr>>h2(nBins,0,{})".format(max(5,injSig*5)),selection)
 				c1.SaveAs("./plots/"+SVJNAME+"_"+region+expSig+funcs+"_3PlotsR.pdf")
 				if gaus.GetNDF() == 0:
 					continue
@@ -200,9 +213,6 @@ for expSig in ["SigM"]:#"Sig0","Sig1",
 					if len(vec[region]) == 2:
 						out.write("{} {}\n".format(vec[region][0][i], vec[region][1][i]))
 				out.close()
-
-
-
 
 
 
