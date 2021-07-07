@@ -56,7 +56,7 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
        frame = variable.frame(ROOT.RooFit.Title(""))
        dataset.plotOn(frame, RooFit.Invisible())
        #print(fitRes[0])
-       if doplots and len(fitRes) > 0: graphFit = model.plotOn(frame, RooFit.VisualizeError(fitRes[0], 1, False), RooFit.Normalization(norm if norm>0 else dataset.sumEntries(), ROOT.RooAbsReal.NumEvent), RooFit.LineColor(ROOT.kBlue), RooFit.FillColor(ROOT.kOrange), RooFit.FillStyle(1001), RooFit.DrawOption("FL"), RooFit.Range("Full"))
+       if doplots and len(fitRes) > 0 and npar <= 3: graphFit = model.plotOn(frame, RooFit.VisualizeError(fitRes[0], 1, False), RooFit.Normalization(norm if norm>0 else dataset.sumEntries(), ROOT.RooAbsReal.NumEvent), RooFit.LineColor(ROOT.kBlue), RooFit.FillColor(ROOT.kOrange), RooFit.FillStyle(1001), RooFit.DrawOption("FL"), RooFit.Range("Full"))
 
        model.plotOn(frame, RooFit.Normalization(norm if norm>0 else dataset.sumEntries(), ROOT.RooAbsReal.NumEvent), RooFit.LineColor(ROOT.kBlue), RooFit.FillColor(ROOT.kOrange), RooFit.FillStyle(1001), RooFit.DrawOption("L"), RooFit.Name(model.GetName()),  RooFit.Range("Full"))
        model.paramOn(frame, RooFit.Label(model.GetTitle()), RooFit.Layout(0.45, 0.95, 0.94), RooFit.Format("NEAU"))
@@ -80,7 +80,7 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
 
        frame.SetMaximum(frame.GetMaximum()*10.)
        frame.SetMinimum(0.1)
-       if(doplots):
+       if doplots and npar <= 3:
 
               c = ROOT.TCanvas("c_"+ch+model.GetName(), ch, 800, 800)
 
@@ -145,7 +145,7 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
        xmin_ = graphData.GetXaxis().GetXmin()
        xmax_ = graphData.GetXaxis().GetXmax()
        
-       if(doplots):
+       if doplots and npar <= 3:
               c.Update()
               c.Range(xmin_, -3.5, xmax_, 3.5)
               line = ROOT.TLine(xmin_, 0., xmax_, 0.)
@@ -191,7 +191,7 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
               parValList.append((fitRes[0].floatParsFinal().at(iPar)).getValV())
               parErrList.append((fitRes[0].floatParsFinal().at(iPar)).getError())
        out = {"chiSquared":roochi2,"chi2" : chi2, "rss" : rss, "nbins" : nbins, "npar" : npar, "parVals": parValList, "parErr":parErrList}
-       if(doplots):
+       if doplots and npar <= 3:
 
               c2 = ROOT.TCanvas("c2_"+ch+model.GetName(), ch, 800, 800)
               c2.cd()
@@ -324,11 +324,11 @@ def drawTwoFuncs(ch, variable, modelA, modelB, dataset, fitRes, carddir,  norm =
        frame_res.SetTitle("")
        
        c.Update()
-       c.Range(1500, -3.5, 8000, 3.5)
+       c.Range(1850, -3.5, 8050, 3.5)
        # create two histograms, one for modelA (main) and one for modelB (alt)
        # then divide A by B, and plot in Red
-       histA = ROOT.TH1F("histA","histA",65,1500,8000)
-       histB = ROOT.TH1F("histB","histB",65,1500,8000)
+       histA = ROOT.TH1F("histA","histA",65,1850,8050)
+       histB = ROOT.TH1F("histB","histB",65,1850,8050)
        histA.Sumw2()
        histB.Sumw2()
        modelA.fillHistogram(histA, RooArgList(varArg))
@@ -381,8 +381,8 @@ def getCard(ch, idir, bias = False, useChi2 = False, verbose = False, doplots = 
        mode = "template"
        doModelling = True    
        if(mode == "template"):
-              xvarmin = 1500.
-              xvarmax = 8000.
+              xvarmin = 1850.
+              xvarmax = 8050.
               mT = RooRealVar(  "mH"+ch,    "m_{T}", xvarmin, xvarmax, "GeV")
 
               obsData = ws.data("data_obs")
@@ -453,9 +453,9 @@ def getCard(ch, idir, bias = False, useChi2 = False, verbose = False, doplots = 
                                 RSS_alt[fitResAlt[i].floatParsFinal().getSize()] = getRSS(ch, mT, modelAlt[i], obsData,  [fitResAlt[i]], carddir, doplots, nDataEvts, label = "alt")
 
                             if doplots:
-                                for i in range(len(modelBkg)):
-                                    for j in range(len(modelAlt)):
-                                        drawTwoFuncs(ch, mT, modelBkg[i], modelAlt[j], obsData, [fitRes[i], fitResAlt[j]], carddir,  nDataEvts, label = "dual")
+                                #for i in range(len(modelBkg)):
+                                #    for j in range(len(modelAlt)):
+                                #        drawTwoFuncs(ch, mT, modelBkg[i], modelAlt[j], obsData, [fitRes[i], fitResAlt[j]], carddir,  nDataEvts, label = "dual")
 
                                 xframeAlt = mT.frame(ROOT.RooFit.Title("extended ML fit example"))
 

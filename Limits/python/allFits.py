@@ -80,8 +80,8 @@ def getCard(sig, ch, ifilename, npool = 1, initvals = [1.0], bias = False, verbo
               print "channel ", ch             
               print "signal ", sig
 
-              xvarmin = 1500.
-              xvarmax = 8000.
+              xvarmin = 1850.
+              xvarmax = 8050.
               mT = RooRealVar(  "mH"+ch,    "m_{T}", xvarmin, xvarmax, "GeV")
               binMin = histData.FindBin(xvarmin)
               binMax = histData.FindBin(xvarmax)
