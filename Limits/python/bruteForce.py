@@ -303,6 +303,7 @@ if __name__=="__main__":
     parser.add_argument("-w", "--workspace", dest="workspace", type=str, default="SVJ", help="workspace name")
     parser.add_argument("-p", "--pdf", dest="pdf", type=str, required=True, help="pdf name")
     parser.add_argument("-i", "--initvals", dest="initvals", type=float, default=[-10.0,-1.0,-0.1,0.1,1.0,10.0], nargs='+', help="list of allowed initial values")
+    #parser.add_argument("-i", "--initvals", dest="initvals", type=float, default=[-8.0,-0.8,-0.1,0.1,0.8,8.0], nargs='+', help="list of allowed initial values")
     parser.add_argument("-n", "--npool", dest="npool", type=int, default=1, help="number of processes")
     parser.add_argument("-m", "--max", dest="max", type=float, default=None, nargs=2, help="[max # parameters (to generate initvals combinations)] [single initial value (for subsequent parameters)]")
     parser.add_argument("-v", "--verbosity", dest="verbosity", type=int, default=1, help="verbosity level")

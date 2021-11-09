@@ -64,7 +64,10 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
        graphData = dataset.plotOn(frame, RooFit.DataError(ROOT.RooAbsData.Poisson if isData else ROOT.RooAbsData.SumW2), RooFit.DrawOption("PE0"), RooFit.Name(dataset.GetName()))
 
        pulls = frame.pullHist(dataset.GetName(), model.GetName(), True)
+       print("dataset.GetName(): ", dataset.GetName())
+       print("model get name: ", model.GetName())
        residuals = frame.residHist(dataset.GetName(), model.GetName(), False, True) # this is y_i - f(x_i)
+       print("residula: ", residuals)
     
        roochi2 = frame.chiSquare(model.GetName(), dataset.GetName(),npar)#dataset.GetName(), model.GetName()) #model.GetName(), dataset.GetName()
        # get ndf by hand
@@ -76,10 +79,13 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
             dhist.GetPoint(i,x,y)
             if y!=0: nbins += 1
        chi2 = roochi2 * ( nbins - npar)
+       #Integral = frame.Integral(model.GetName(), dataset.GetName(),npar)
        roopro = ROOT.TMath.Prob(chi2, nbins - npar)
 
        frame.SetMaximum(frame.GetMaximum()*10.)
-       frame.SetMinimum(0.1)
+       #frame.SetMaximum(frame.GetMaximum()*1.)
+       #frame.SetMinimum(0.1)
+       frame.SetMinimum(100)
        if(doplots):
 
               c = ROOT.TCanvas("c_"+ch+model.GetName(), ch, 800, 800)
@@ -98,7 +104,9 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
               frame.SetTitle("")
               
               roochi2_small = format(roochi2, '.2f')
-              txt = ROOT.TText(0.65, 0.7, "chiSquared: " + str(roochi2_small))              
+	      #integral_small = format(integral, '.2f')
+              txt = ROOT.TText(0.65, 0.7, "chiSquared: " + str(roochi2_small))             
+	      #txt = ROOT.TText(0.65, 0.7, "Integral: " + str(integral_small)) 
               txt.SetNDC()
               txt.SetTextSize(0.04) 
               txt.SetTextColor(ROOT.kRed) 
@@ -153,7 +161,7 @@ def getRSS(ch, variable, model, dataset, fitRes, carddir, doplots, norm = -1, la
               line.SetLineWidth(2)
               line.Draw("same")
                             
-              c.SaveAs("Residuals_"+ch+"_"+name+"_log.pdf")              
+              #c.SaveAs("Residuals_"+ch+"_"+name+"_log.pdf")              
 
        # calculate RSS
        rss = 0.
@@ -341,7 +349,7 @@ def drawTwoFuncs(ch, variable, modelA, modelB, dataset, fitRes, carddir,  norm =
        
        c.Update()
        c.Modified()
-       c.SaveAs("Residuals_"+ch+"_"+name+"_TwoFuncs_14.pdf")
+       #c.SaveAs("Residuals_"+ch+"_"+name+"_TwoFuncs_14.pdf")
        c.Delete()
 
 def fisherTest(RSS1, RSS2, o1, o2, N):
@@ -361,7 +369,8 @@ def fisherTest(RSS1, RSS2, o1, o2, N):
 #*******************************************************#
 
 def getCard(ch, idir, bias = False, useChi2 = False, verbose = False, doplots = True):
-       ch_red = ch[:-5]
+       #ch_red = ch[:-5]
+       ch_red = ch
        rfilename = idir+"/fitResults_{}.root".format(ch_red)
        print "Opening file ", rfilename
        rfile = ROOT.TFile.Open(rfilename)
@@ -381,8 +390,8 @@ def getCard(ch, idir, bias = False, useChi2 = False, verbose = False, doplots = 
        mode = "template"
        doModelling = True    
        if(mode == "template"):
-              xvarmin = 1500.
-              xvarmax = 8000.
+	      xvarmin = 190.
+       	      xvarmax = 502.
               mT = RooRealVar(  "mH"+ch,    "m_{T}", xvarmin, xvarmax, "GeV")
 
               obsData = ws.data("data_obs")
@@ -438,8 +447,9 @@ def getCard(ch, idir, bias = False, useChi2 = False, verbose = False, doplots = 
                          txt4.Draw()
 
                          c1.SetLogy()
-                         c1.SaveAs("TestAfterFit_"+ch+".pdf")
+                         #c1.SaveAs("TestAfterFit_"+ch+".pdf")
 
+		     print("length of model bkg: ", range(len(modelBkg)))
                      RSS = {orderBkg[i] : getRSS(ch, mT, modelBkg[i], obsData, [fitRes[i]], carddir, doplots, nDataEvts) for i in range(len(modelBkg))}
 
                      #**********************************************************
@@ -474,7 +484,7 @@ def getCard(ch, idir, bias = False, useChi2 = False, verbose = False, doplots = 
                                 xframeAlt.Draw()
 
                                 c2.SetLogy()
-                                c2.SaveAs("TestAfterFit_"+ch+"_Alt.pdf")
+                                #c2.SaveAs("TestAfterFit_"+ch+"_Alt.pdf")
 
 
 

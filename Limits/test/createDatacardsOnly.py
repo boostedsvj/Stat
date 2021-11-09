@@ -5,27 +5,35 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 # -Fisher testing is only done on the baseline (3000, 20, 03, peak) signal
 # -channels list is now created here
 
-channels = ["lowSVJ2", "highSVJ2", "highCut", "lowCut"]
+channels = ['bsvj']
 sigpoints = []
 
 parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-parser.add_argument('-i', '--input', dest='ifile', type=str, default= "root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig4/sigfull/",help='Where can I find input histos? trig4/sigfull = new (24 July 2020) files created by Kevin')
-parser.add_argument('-w', '--workspaceDir', dest='workspaceDir', type=str, default="root://cmseos.fnal.gov//store/user/cfallon/datacards_aCrit07/",help='Location of F-test output files ws_{}.root')
-parser.add_argument("-m","--mode",dest="mode",type=str,default="hist",help="Kind of shape analysis: parametric fit or fit to histos?")
-parser.add_argument("-Z", "--zMass", dest="mZ", type=str,help="Mass [GeV] of the Z' in MC signal. range: [500, 4400] in steps of 100, inclusive", default='2900')
-parser.add_argument("-D", "--dMass", dest="mD", type=str, help="Mass [GeV] of dark quarks in MC signal", default = '20')
+parser.add_argument('-i', '--input', dest='ifile', type=str, default= "/home/saranabili/LimitStudy/CMSSW_10_2_13/src/Stat/Limits/test/",help='Location of F-test output files ws_{}.root')
+parser.add_argument('-w', '--workspaceDir', dest='workspaceDir', type=str, default="/home/saranabili/LimitStudy/CMSSW_10_2_13/src/Stat/Limits/test/",help='Location of F-test output files ws_{}.root')
+parser.add_argument("-m","--mode",dest="mode",type=str,default="template",help="Kind of shape analysis: parametric fit or fit to histos?")
+parser.add_argument("-Z", "--zMass", dest="mZ", type=str,help="Mass [GeV] of the Z' in MC signal. range: [250, 450] in steps of 50, inclusive", default='350')
+parser.add_argument("-D", "--dMass", dest="mD", type=str, help="Mass [GeV] of dark quarks in MC signal", default = '10')
 parser.add_argument("-R", "--rInv", dest="rI", type=str, help="Fraction of invisible particles in MC signal", default = '03')
 parser.add_argument("-A", "--aDark", dest="aD", type=str, help="alphaDark value in MC signal. Options: 'low', 'peak', 'high'", default = "peak")
 parser.add_argument("-t", "--test", dest="bias", action="store_true", default=False)
-parser.add_argument("-s", "--noSys",dest="doSys",action='store_false', default=True)
+parser.add_argument("-s", "--noSys",dest="doSys",action='store_false', default=False)
 opt = parser.parse_args()
 sys.argv.append('-b')
 
 import ROOT
 from Stat.Limits.datacardsOnly import *
 
-ifilename = opt.ifile + "datacard_final_SVJ_"+opt.mZ+"_"+opt.mD+"_"+(opt.rI if len(opt.rI)==1 else opt.rI[0]+"."+opt.rI[1])+"_"+opt.aD+".root"
-
+#ifilename = opt.ifile + "datacard_final_SVJ_"+opt.mZ+"_"+opt.mD+"_"+(opt.rI if len(opt.rI)==1 else opt.rI[0]+"."+opt.rI[1])+"_"+opt.aD+".root"
+#ifilename = opt.ifile + "tmva_MThisto_August6_systematicup.root"
+#ifilename = opt.ifile + "qcd_mz250_tight.root"
+#ifilename = opt.ifile + "Sept27_3masspoints_qcd.root"
+#ifilename = opt.ifile + "Sept27_3masspoints_qcd_bdt50.root"
+#ifilename = opt.ifile + "Sept28_3masspoints_bdt50.root"
+#ifilename = opt.ifile + "Sept29_qcdttjets_3mz.root"
+#ifilename = opt.ifile + "Oct04_3mass_allbkg.root"
+#ifilename = opt.ifile + "histograms_3masspoints_allbkgs_highermassrange_Oct07.root"
+ifilename = opt.ifile + "test.root"
 signals = []
 
 sigpoints.append([opt.mZ, opt.mD, opt.rI, opt.aD])

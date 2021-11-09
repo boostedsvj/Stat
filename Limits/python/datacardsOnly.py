@@ -33,7 +33,7 @@ syst["lumi"] = ("lnN", "sig", 1.026)
 syst["trig"] = ("lnN", "sig", 1.020)
 syst["scale"] = ("lnN", "sig", 1.15)
 
-syst["mcstat"] = ("shape", ["sig"])
+'''syst["mcstat"] = ("shape", ["sig"])
 
 syst["MC2016JEC"] = ("shape",["sig"])
 syst["MC2016JER"] = ("shape",["sig"])
@@ -53,7 +53,7 @@ syst["MC2018trigfnunc"] = ("shape",["sig"])
 syst["MCRun2JES"] = ("shape",["sig"])
 syst["MCRun2pdfallunc"] = ("shape",["sig"])
 syst["MCRun2psfsrunc"] = ("shape",["sig"])
-syst["MCRun2psisrunc"] = ("shape",["sig"])
+syst["MCRun2psisrunc"] = ("shape",["sig"])'''
 
 
 processes = ["QCD"]
@@ -69,10 +69,12 @@ isData = True
 def getRate(ch, process, ifile):
        hName = ch + "/"+ process
        h = ifile.Get(hName)
-       return h.Integral(1,h.GetXaxis().GetNbins()-1)
+       #return h.Integral(1,h.GetXaxis().GetNbins()-1)
+       return h.Integral(1,h.GetXaxis().GetNbins())
 
 def getHist(ch, process, ifile):
        hName = ch + "/"+ process
+       print"ch is: %s, process is: %s"%(ch, process)
        print "Histo Name ", hName
        h = ifile.Get(hName)
        h.SetDirectory(0)
@@ -85,7 +87,8 @@ def getHist(ch, process, ifile):
 #                                                       #
 #*******************************************************#
 
-def getCard(sig, ch, ifilename, wsdir, doModelling, mode = "histo", bias = False, verbose = False, doSys = True):
+#def getCard(sig, ch, ifilename, wsdir, doModelling, mode = "histo", bias = False, verbose = False, doSys = True):
+def getCard(sig, ch, ifilename, wsdir, doModelling, mode = "template", bias = True, verbose = False, doSys = False):
        try:
               ifile = ROOT.TFile.Open(ifilename)
        except IOError:
@@ -98,6 +101,7 @@ def getCard(sig, ch, ifilename, wsdir, doModelling, mode = "histo", bias = False
        print "BIAS?", bias
        carddir = ""
 
+       ch = 'bsvj'
        hist_filename = os.getcwd()+"/"+ifilename
        hist = getHist(ch, sig, ifile)
 
@@ -112,16 +116,19 @@ def getCard(sig, ch, ifilename, wsdir, doModelling, mode = "histo", bias = False
     
        if(mode == "template"):
 
-              ch_red = ch[:-5]
+              #ch_red = ch[:-5]
+	      ch_red = ch
               modelName = "Bkg_"+ch
               modelAltName =  "Bkg_Alt_"+ch
               histData = getHist(ch, "data_obs", ifile)
               histSig = getHist(ch, sig, ifile)
-              xvarmin = 1500.
-              xvarmax = 8000.
+              xvarmin = 190.
+	      xvarmax = 502.
               binMin = histData.FindBin(xvarmin)
-              binMax = histData.FindBin(xvarmax)
+              binMax = histData.FindBin(xvarmax)-1
               nDataEvts = histData.Integral(binMin, binMax)
+              print("binMin: %d, binMax: %d")%(binMin, binMax)
+              print("number of data events from the integral of the histogram: ", nDataEvts)
               nSigEvts = histSig.Integral(binMin, binMax)
               mT = RooRealVar(  "mH"+ch,    "m_{T}", xvarmin, xvarmax, "GeV")
               obsData = RooDataHist("data_obs", "Data",  RooArgList(mT), histData, 1.)
@@ -177,7 +184,7 @@ def getCard(sig, ch, ifilename, wsdir, doModelling, mode = "histo", bias = False
                      getattr(w, "import")(normulti)#, RooFit.Rename(normulti.GetName()))
                      getattr(w, "import")(roomultipdf)#, RooFit.Rename(roomultipdf.GetName()))
 
-              for i in xrange(hist.GetNbinsX()):
+              '''for i in xrange(hist.GetNbinsX()):
                      for year in ["2016","2017","2018"]:
                             mcstatSysName = "mcstat_%s_%s_MC%sbin%d"  % (ch, sig, year, i+1)
                             mcstatSigUp = getHist(ch, sig + "_" + mcstatSysName + "Up", ifile)
@@ -197,7 +204,7 @@ def getCard(sig, ch, ifilename, wsdir, doModelling, mode = "histo", bias = False
                             sysSigHistUp = RooDataHist(sig + "_" + sysName + "Up", sysName + " uncertainty",  RooArgList(mT), sysUp, 1.)
                             sysSigHistDown = RooDataHist(sig + "_" + sysName + "Down", sysName + " uncertainty",  RooArgList(mT), sysDown, 1.)
                             getattr(w, "import")(sysSigHistUp, RooFit.Rename(sig + "_" + sysName + "Up") )
-                            getattr(w, "import")(sysSigHistDown, RooFit.Rename(sig + "_" + sysName + "Down") )
+                            getattr(w, "import")(sysSigHistDown, RooFit.Rename(sig + "_" + sysName + "Down") )'''
                             
 
 

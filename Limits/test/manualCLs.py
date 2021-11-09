@@ -141,7 +141,7 @@ def getOutfile(log):
     if len(ofname)==0: raise RuntimeError("Could not find output file name from log: {}".format(log))
     return ofname, success
 
-def getRange(dry_run, ofname1, nuisances):
+def getRange(dry_run, ofname1, nuisances, permissive):
     # get r range
     # (default vals provided for dryrun printouts)
     rmin = 0.
@@ -155,9 +155,16 @@ def getRange(dry_run, ofname1, nuisances):
         import ROOT as r
         file1 = r.TFile.Open(ofname1)
         limit1 = file1.Get("limit")
+	#print("filename is: "file1.GetName())
+        entries = limit1.GetEntries()
         n = limit1.Draw("limit","abs(quantileExpected-0.975)<0.001||abs(quantileExpected-0.025)<0.001","goff")
-        if n!=2: raise RuntimeError("Malformed limit tree in "+ofname1)
-        vals = [limit1.GetVal(0)[0],limit1.GetVal(0)[1]]
+        vals = []
+        if n!=2:
+            if not permissive or entries==0: raise RuntimeError("Malformed limit tree in "+ofname1)
+            elif permissive:
+                n = limit1.Draw("limit","","goff")
+                vals = [limit1.GetVal(0)[0]]
+        if len(vals)==0: vals = [limit1.GetVal(0)[0],limit1.GetVal(0)[1]]
         rmax = max(vals)*factor
 
     return rmin,rmax,npts
@@ -256,6 +263,7 @@ def step0(args, products):
     return products
 
 def step1(args, products, nuisances=False, stepname="Step1"):
+#def step1(args, products, nuisances=False, stepname="Step"):
     # run AsymptoticLimits w/ nuisances disabled (default)
     args1 = updateArg(args.args, ["-n","--name"], stepname)
     if not nuisances: args1 = updateArg(args1, ["--freezeParameters"], "allConstrainedNuisances", ',')
@@ -285,6 +293,7 @@ def step2impl(args, products, name, lname, ofname, extra=""):
     args2 = updateArg(args.args, ["-n","--name"], name)
     if "toysFile" in extra:
         args2 = removeToyArgs(args2)
+    args2 = removeArg(args2, "--saveToys")
     args2 = handleInitArgs(args2, products["init_args"])
     args2 = updateArg(args2, ['--setParameterRanges'], "r={},{}".format(products["rmin"],products["rmax"]), ':')
     # addl args for second r ranges
@@ -311,19 +320,21 @@ def step2impl(args, products, name, lname, ofname, extra=""):
             if "step2" not in args.reuse:
                 runCmd(cmdh, subprocess.PIPE)
                 for ofname_ in [ofname_old,ofname_new]: os.remove(ofname_)
-
+    print("product: ", products)
     return products
+    #print("product: ", products)
 
 def step2(args, products):
     asimov_args = "-t -1 --toysFreq"
 
     if products["count_upper"]==0:
         # get rmin, rmax from step1
-        products["rmin"], products["rmax"], products["npts"] = getRange(args.dry_run, products["ofname1"], args.syst)
+        products["rmin"], products["rmax"], products["npts"] = getRange(args.dry_run, products["ofname1"], args.syst, args.permissive)
 
         # get asimov dataset separately (for some reason, hadding MultiDimFit output files crashes if both --saveWorkspace and --saveToys are used)
         argsG = updateArg(args.args, ["-n","--name"], "Asimov")
         argsG = removeToyArgs(argsG)
+        argsG = removeArg(argsG, "--saveToys")
         argsG = handleInitArgs(argsG, products["init_args"])
         cmdG = "combine -M GenerateOnly {} --saveToys {}".format(asimov_args, argsG)
         fprint(cmdG)
@@ -394,6 +405,9 @@ def step3(args, products):
     rmax = max(r_data)
     dnll_data = [r_dict[k][0] for k in r_data]
     dnll_asimov = [r_dict[k][1] for k in r_data]
+    len_r_data = len(r_data)
+    if products["count_upper"]>0 and len_r_data==products["len_r_data"]:
+        raise RuntimeError("ERROR: no fits converged when extending r range to avoid limits at boundary")
 
     clsb = []
     clb = []
@@ -412,6 +426,8 @@ def step3(args, products):
     dn2ll_data_graph = r.TGraph(len(r_data))
     dn2ll_asimov_graph = r.TGraph(len(r_data))
 
+    dn2ll_min = 1e10
+    dn2ll_max = -1e10
     for i in range(len(r_data)):
         rval = r_data[i]
         if rval < r_data_bestfit:
@@ -451,6 +467,8 @@ def step3(args, products):
         clb_graph.SetPoint(i, rval, b)
         dn2ll_data_graph.SetPoint(i, rval, 2*dnll_data_constrained)
         dn2ll_asimov_graph.SetPoint(i, rval, 2*dnll_asimov[i])
+        dn2ll_min = min(dn2ll_min,2*dnll_data_constrained,2*dnll_asimov[i])
+        dn2ll_max = max(dn2ll_max,2*dnll_data_constrained,2*dnll_asimov[i])
 
     import numpy as np
     def find_crossing(array, value):
@@ -502,6 +520,7 @@ def step3(args, products):
     products["at_upper"] = len(quantiles_at_upper_boundary)>0
     if products["at_upper"]:
         fprint("WARNING: found limits for quantiles {} at boundary".format(','.join([str(q) for q in quantiles_at_upper_boundary])))
+        products["len_r_data"] = len_r_data
 
     # draw plots
     if args.plots:
@@ -548,7 +567,7 @@ def step3(args, products):
             c.Print(pname1.format(args.name,pformat))
 
         hist.Draw()
-        hist.SetMaximum(10)
+        hist.GetYaxis().SetRangeUser(dn2ll_min,dn2ll_max)
         dn2ll_data_graph.Draw('l')
         dn2ll_data_graph.SetLineColor(r.kBlack)
         dn2ll_asimov_graph.Draw('l')
@@ -576,6 +595,14 @@ def step4(args, products):
     #          bestfit (obs) as quantile=-3
     #          bestfit (asimov) as quantile=-4
     products["limits"][-2] = 0.
+
+    def checkFitRes(ofname,success):
+        if not success: return success
+        import ROOT as r
+        ofname = ofname.replace("MultiDimFit.","").replace("higgsCombine","multidimfit")
+        f = r.TFile.Open(ofname)
+        fitres = f.Get("fit_mdf")
+        return fitres!=None
     
     products["ofitnames"] = {}
     no_reuse = "step4" not in args.reuse
@@ -585,7 +612,7 @@ def step4(args, products):
         if q==-3 or q==-4:
             extra = "--X-rtd REMOVE_CONSTANT_ZERO_POINT=1 --saveNLL"
         if q==-4 or q>0:
-            extra += " -t -1 --toysFreq --saveToys"
+            extra += " -t -1 --toysFreq"
             args4 = removeToyArgs(args4)
         else:
             args4 = updateArg(args4, ["--setParameters"], "r={}".format(rval), ',')
@@ -593,14 +620,17 @@ def step4(args, products):
         args4 = updateArg(args4, ["-n","--name"], "Postfit{:.3f}".format(q))
         # not needed when params already known
         args4 = removeArg(args4,"MINIMIZER_MaxCalls",before=1,exact=False)
+        # avoid default cutoff
+        args4 += " --rMax {}".format(rval*2)
         args4 = handleInitArgs(args4, products["init_args"])
-        cmd4 = "combine -M MultiDimFit --saveShapes {} {} {}".format(extra,args4,args.fitopts)
+        cmd4 = "combine -M MultiDimFit --saveShapes --saveWorkspace --saveFitResult {} {} {}".format(extra,args4,args.fitopts)
         fprint(cmd4)
         logfname4 = "log_step4q{}_{}.log".format(q,args.name)
         ofname4 = ""
         if not args.dry_run:
             if no_reuse: runCmd(cmd4,logfname4)
             ofname4, success = getOutfile(logfname4)
+            success = checkFitRes(ofname4,success)
             retries = 0
             max_retries = 10
             rval_old = rval
@@ -613,6 +643,7 @@ def step4(args, products):
                 cmd4 = cmd4.replace("r={}".format(rval_old),"r={}".format(rval_new))
                 runCmd(cmd4,logfname4)
                 ofname4, success = getOutfile(logfname4)
+                success = checkFitRes(ofname4,success)
             if not success:
                 fprint("WARNING: MultiDimFit failed {} times, giving up".format(retries))
             products["ofitnames"][q] = ofname4
@@ -655,6 +686,7 @@ def step5(args, products, title="ManualCLs"):
             tree1.SetBranchAddress("quantileExpected",r.AddressOf(qobj,'quantile'))
             tree1.SetBranchAddress("limit",r.AddressOf(qobj,'limit'))
             newtree = tree1.CloneTree(0)
+            # todo: handle permissive case here
             for i in range(tree1.GetEntries()):
                 tree1.GetEntry(i)
                 for q,rval in products["limits"].iteritems():
@@ -667,6 +699,7 @@ def step5(args, products, title="ManualCLs"):
         
         # output
         products["ofname5"] = products["ofname1"].replace("AsymptoticLimits",title).replace("Step1","")
+	#products["ofname5"] = products["ofname1"].replace("AsymptoticLimits",title).replace("Step","")
         ofile = r.TFile.Open(products["ofname5"], "RECREATE")
         ofile.cd()
         newtree.Write()
@@ -679,6 +712,7 @@ def step5(args, products, title="ManualCLs"):
 
 def manualCLs(args):
     products = defaultdict(lambda: None)
+    #print('product is: ', products)
 
     # 0. b-only fit if requested for initCLs
     if args.bonly:
@@ -746,6 +780,7 @@ if __name__=="__main__":
     parser.add_argument("-A", "--asymptotic", dest="asymptotic", default=False, action="store_true", help="just run AsymptoticLimits after init step")
     parser.add_argument("-S", "--spline", dest="spline", type=str, default="linear", choices=list(allowed_splines), help="spline to use for interpolation of CLs curves (none: disable interpolation)")
     parser.add_argument("--npoints", dest="npoints", type=int, default=10, help="number of points to use in interpolation")
+    parser.add_argument("--permissive", dest="permissive", default=False, action='store_true', help="be more permissive about finding range in step1")
     args = parser.parse_args()
 
     if "all" in args.reuse: args.reuse = reusable_steps[:]
