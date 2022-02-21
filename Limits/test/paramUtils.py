@@ -57,14 +57,24 @@ def paramVal(key,val):
 
 def getCombos():
     combos = {
-        "cut": ["highCut","lowCut"],
-        "bdt": ["highSVJ2","lowSVJ2"],
+        #"cut": ["highCut","lowCut"],
+        #"bdt": ["highSVJ2","lowSVJ2"],
+	#"bdt": ["bsvj"],
+        #"bdt": ["bsvj_0p4"],
+        "bdt": ["bsvj_0p0"],
+        #"bdt": ["bsvj_0p1"],
+        #"bdt": ["bsvj_0p2"],
+        #"bdt": ["bsvj_0p3"],
     }
     return combos
 
 def getChannel(region):
-    return "ch1" if "high" in region else "ch2"
-
+    #return "ch1" if "high" in region else "ch2"
+    #return "ch1" if "bsvj_0p4" in region else "ch2"
+    return "ch1" if "bsvj_0p0" in region else "ch2" 
+    #return "ch1" if "bsvj_0p1" in region else "ch2"
+    #return "ch1" if "bsvj_0p2" in region else "ch2"
+    #return "ch1" if "bsvj_0p3" in region else "ch2"
 def PoissonErrorUp(N):
     alpha = 1 - 0.6827 #1 sigma interval
     import ROOT as r
@@ -83,6 +93,7 @@ def getParamNames():
     return params
 
 def makeSigDict(values,names=None):
+    print('sig: ', values)
     if names is None: names=getParamNames()
     sigdict = {names[j]:values[j] for j in range(len(values))}
     return sigdict
@@ -109,13 +120,15 @@ def getXname(sig,xname):
 # workspace filename
 def getWname(sig,region):
     signame = getSignameCheck(sig)
-    wname = "ws_{}_{}_2018_template.root".format(signame,region)
+    #wname = "ws_{}_{}_2018_template.root".format(signame,region)
+    wname = "ws_{}_{}_template.root".format(signame,region)
     return getXname(signame,wname)
 
 # individual datacard
 def getDname(sig,region):
     signame = getSignameCheck(sig)
-    dname = "{}_{}_2018_template_bias.txt".format(signame,region)
+    #dname = "{}_{}_2018_template_bias.txt".format(signame,region)
+    dname = "{}_{}_template_bias.txt".format(signame,region)
     return getXname(signame,dname)
 
 # combined datacard
@@ -125,7 +138,8 @@ def getDCname(sig,combo):
 
 # parameter names
 def getPname(region, alt=False):
-    pname = "Bkg{}_{}_2018".format("_Alt" if alt else "", region)
+    #pname = "Bkg{}_{}_2018".format("_Alt" if alt else "", region)
+    pname = "Bkg{}_{}".format("_Alt" if alt else "", region)
     return pname
 
 # combine filename
@@ -155,6 +169,7 @@ def getBranches(tree, matches=None, exact=False):
     if not exact and not isinstance(matches,list): matches = [matches]
     elif exact and isinstance(matches,list): matches = matches[0]
     branches = []
+    #print('tree: ', tree)
     for b in tree.GetListOfBranches():
         bname = b.GetName()
         leaf = b.GetLeaf(bname)
@@ -172,6 +187,7 @@ def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extra
     if len(extraCondition)>0: condition += "&&{}".format(extraCondition)
     results = {}
     file = OpenFile(fname)
+    #print("file name is:   *****  ", file)
     tree = file.Get("limit")
 
     matches = []
@@ -181,11 +197,18 @@ def getParamsTracked(fname, quantile, includeParam=True, includeErr=False, extra
     # background normalization factors
     params.extend(getBranches(tree, matches+["shapeBkg"]))
     # background & signal final normalizations
+    params.extend(getBranches(tree, matches+["n_exp"]))
     params.extend(getBranches(tree, matches+["n_exp_final"]))
     # signal strength (from MDF)
     params.extend(getBranches(tree, "r", exact=True))
 
-    for region in ["high","low"]:
+    #for region in ["high","low"]:
+    #for region in ["bsvj"]:
+    #for region in ["bsvj_0p4"]:
+    for region in ["bsvj_0p0"]:
+    #for region in ["bsvj_0p1"]:
+    #for region in ["bsvj_0p2"]:
+    #for region in ["bsvj_0p3"]:
         # background fit parameters
         params.extend(sorted(getBranches(tree, matches+[region])))
 

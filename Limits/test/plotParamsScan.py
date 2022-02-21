@@ -32,6 +32,7 @@ def main(sig,name,step,combo,seed,init):
             errargs.update(etmp)
 
     infname = getFname("Step1"+name, "AsymptoticLimits", combo, sig=sig, seed=seed)
+    #print('infname: ', infname)
     iparams = getParamsTracked(infname, 0.5)
     ieparams = getParamsTracked(infname, 0.5, includeParam=False, includeErr=True)
     ivals = OrderedDict()
@@ -50,6 +51,7 @@ def main(sig,name,step,combo,seed,init):
     import ROOT as r
     r.gROOT.SetBatch(True)
     mdfname = getFname(step+name, "MultiDimFit", combo, sig=sig, seed=seed)
+    #print('mdfname: ', mdfname)
     mdffile = OpenFile(mdfname)
     mdftree = mdffile.Get("limit")
     allParams = ":".join(["trackedParam_{p}:trackedError_{p}".format(p=p) for p in ivals])

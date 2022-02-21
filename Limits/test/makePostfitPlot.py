@@ -45,9 +45,11 @@ quantile_info = {
 
 function_info = {
     ("alt",2):  {"formula": "[0]*exp([1]*x/13000)*(x/13000)^([2])", "legname": "g_{2}(x)", "name": "g"},
-    ("alt",3):  {"formula": "[0]*exp([1]*x/13000)*(x/13000)^([2]*(1+[3]*log(x/13000)))", "legname": "g_{3}(x)", "name": "g"},
+    ("alt",3):  {"formula": "[0]*exp([1]*x/13000)*(x/13000)^([2]+[3]*log(x/13000))", "legname": "g_{3}(x)", "name": "g"},
+    ("alt",4):  {"formula": "[0]*exp([1]*x/13000)*(x/13000)^([2]+[3]*log(x/13000)+[4]*(log(x/13000))^2)", "legname": "g_{4}(x)", "name": "g"},
     ("main",2): {"formula": "([0]*(1-x/13000)^[1])*((x/13000)^(-[2]))", "legname": "f_{1,1}(x)", "name": "f"},
     ("main",3): {"formula": "([0]*(1-x/13000)^[1])*((x/13000)^(-[2]-[3]*log(x/13000)))", "legname": "f_{1,2}(x)", "name": "f"},
+    ("main",4): {"formula": "([0]*(1-x/13000)^[1])*((x/13000)^(-[2]-[3]*log(x/13000)-[4]*(log(x/13000)^2)))", "legname": "f_{1,3}(x)", "name": "f"},
 }
 
 region_info = {
@@ -55,6 +57,15 @@ region_info = {
     "lowCut": {"alt": 2, "main": 2, "legname": "low-^{}R_{T}"},
     "highSVJ2": {"alt": 2, "main": 2, "legname": "high-SVJ2"},
     "lowSVJ2": {"alt": 2, "main": 2, "legname": "low-SVJ2"},
+    #"bsvj": {"alt": 2, "main": 2, "legname": "bsvj"},
+    "bsvj_0p0": {"alt": 4, "main": 4, "legname": "bsvj_0p0"},
+    "bsvj_0p1": {"alt": 2, "main": 2, "legname": "bsvj_0p1"},
+    "bsvj_0p2": {"alt": 2, "main": 2, "legname": "bsvj_0p2"},
+    "bsvj_0p3": {"alt": 2, "main": 2, "legname": "bsvj_0p3"},
+    "bsvj_0p4": {"alt": 2, "main": 2, "legname": "bsvj_0p4"},
+    "bsvj_0p45": {"alt": 2, "main": 2, "legname": "bsvj_0p45"},
+    "bsvj_0p5": {"alt": 2, "main": 2, "legname": "bsvj_0p5"},
+    "bsvj_0p6": {"alt": 2, "main": 2, "legname": "bsvj_0p6"},
 }
 
 def makeBandFileName(iname):
@@ -64,9 +75,9 @@ def makeErrorBand(iname,ws,fitres,region,ftype,norm):
     import ROOT as r
     silence()
 
-    pdfname = "Bkg{}_{}_2018".format("_Alt" if ftype=="alt" else "",region)
+    pdfname = "Bkg{}_{}".format("_Alt" if ftype=="alt" else "",region)
     pdf = ws.pdf(pdfname)
-    var = ws.var("mH{}_2018".format(region))
+    var = ws.var("mH{}".format(region))
     data = ws.data("data_obs")
     # combine output is always RooDataSet w/ both regions (not RooDataHist)
     if type(data)==r.RooDataSet:
@@ -137,7 +148,7 @@ def actuallyPlot(signame,input,postfname,data_file):
     fprint(' '.join(outputs))
     os.chdir(current_dir)
 
-def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, injected, combo, region, init_dir=None, init_ftype=None, do_plot=False):
+def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, injected, combo, region, init_dir=None, init_ftype=None, do_plot=False, no_final=False):
     ch = getChannel(region)
     seedname = None
     if not obs: seedname = data_file.split('.')[-2]
@@ -186,7 +197,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
             params = getParamsTracked(fname, quantile)
             if len(params)==0: raise RuntimeError("Could not get tracked parameters for quantile {} from file: {}".format(quantile, fname))
             ftype = "alt" if any(region in p and "_alt" in p for p in params) else "main"
-            norm = params["trackedParam_n_exp_final_bin{}_proc_roomultipdf".format(ch)]
+            norm = params["trackedParam_n_exp{}_bin{}_proc_roomultipdf".format("_final" if not no_final else "", ch)]
 
             iftmp = OpenFile(indfname)
             ws = iftmp.Get("w")
@@ -212,7 +223,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
             fnname = finfo["formula"],
             pvals = ','.join(pvals),
             # yieldval must be multiplied by bin width
-            yieldval = str(norm*100),
+            yieldval = str(norm*8),
             legname = "{}, {}".format(finfo["legname"],qinfo["legname"]),
             fitcol = qinfo["color"],
         )
@@ -229,7 +240,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
 
         signamefull = "{}_{}".format(signame,qinfo["name"])
         sigfileorig = "{}/datacard_final_{}.root".format(datacard_dir,signame)
-        hdir = "{}_2018".format(region)
+        hdir = "{}".format(region)
         if qinfo["name"]=="bonly":
             legname = "{} (r = {:.2g})".format(signame,1)
             sigfile = sigfileorig
@@ -239,7 +250,7 @@ def makePostfitPlot(sig, name, method, quantile, data_file, datacard_dir, obs, i
             legname = "{} (r = {:.2g})".format(signame,params["r"])
             sigfile = "test/{}".format(postfname if signamesafe in postfname else signamesafe+"/"+postfname)
             hdirsig = "shapes_fit/{}".format(ch)
-            signorm = "d:yieldnormval[{}]".format(params["trackedParam_n_exp_final_bin{}_proc_{}".format(ch,signamesafe)])
+            signorm = "d:yieldnormval[{}]".format(params["trackedParam_n_exp{}_bin{}_proc_{}".format("_final" if not no_final else "",ch,signamesafe)])
 
         sigs[signamefull] = set_template.format(
             signamefull = signamefull,
@@ -299,6 +310,7 @@ if __name__=="__main__":
     parser.add_argument("-c", "--combo", dest="combo", type=str, required=True, choices=sorted(list(getCombos())), help="combo to plot")
     parser.add_argument("-I", "--use-init", dest="init", type=str, metavar=("dir","fit"), default=[], nargs=2, help="directory from which to use initial fits (outside combine) and fit type (alt or main)")
     parser.add_argument("-p", "--plot", dest="plot", default=False, action="store_true", help="actually make plot(s)")
+    parser.add_argument("--no-final-norm", dest="noFinalNorm", default=False, action="store_true", help="indicate that combine does not create n_exp_final for signal (just use n_exp)")
     args = parser.parse_args()
 
     if not args.obs and len(args.data)==0:

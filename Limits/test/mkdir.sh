@@ -1,0 +1,53 @@
+#1/bash/bin
+
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/log_files/bdt_cut0p4
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/log_files/bdt_cut0p45
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/log_files/bdt_cut0p5
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/log_files/bdt_cut0p6
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/root_files/bdt_cut0p6
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/root_files/bdt_cut0p5
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/root_files/bdt_cut0p45
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/root_files/bdt_cut0p4
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p4
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p45
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p5
+mkdir -p SVJ_mZprime400_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p6
+
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/log_files/bdt_cut0p4
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/log_files/bdt_cut0p45
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/log_files/bdt_cut0p5
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/log_files/bdt_cut0p6
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/root_files/bdt_cut0p6
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/root_files/bdt_cut0p5
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/root_files/bdt_cut0p45
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/root_files/bdt_cut0p4
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p4
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p45
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p5
+mkdir -p SVJ_mZprime450_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p6
+
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/log_files/bdt_cut0p4
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/log_files/bdt_cut0p45
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/log_files/bdt_cut0p5
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/log_files/bdt_cut0p6
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/root_files/bdt_cut0p6
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/root_files/bdt_cut0p5
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/root_files/bdt_cut0p45
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/root_files/bdt_cut0p4
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p4
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p45
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p5
+mkdir -p SVJ_mZprime500_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p6
+
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/log_files/bdt_cut0p4
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/log_files/bdt_cut0p45
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/log_files/bdt_cut0p5
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/log_files/bdt_cut0p6
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/root_files/bdt_cut0p6
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/root_files/bdt_cut0p5
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/root_files/bdt_cut0p45
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/root_files/bdt_cut0p4
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p4
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p45
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p5
+mkdir -p SVJ_mZprime550_mDark10_rinv03_alphapeak/diagnostic_plots/bdt_cut0p6

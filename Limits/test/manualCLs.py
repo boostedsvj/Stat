@@ -155,6 +155,7 @@ def getRange(dry_run, ofname1, nuisances, permissive):
         import ROOT as r
         file1 = r.TFile.Open(ofname1)
         limit1 = file1.Get("limit")
+	#print("filename is: "file1.GetName())
         entries = limit1.GetEntries()
         n = limit1.Draw("limit","abs(quantileExpected-0.975)<0.001||abs(quantileExpected-0.025)<0.001","goff")
         vals = []
@@ -173,6 +174,7 @@ def getBranches(tree, matches=None, exact=False):
     if not exact and not isinstance(matches,list): matches = [matches]
     elif exact and isinstance(matches,list): matches = matches[0]
     branches = []
+    print('tree in getBranches: ', tree)
     for b in tree.GetListOfBranches():
         bname = b.GetName()
         leaf = b.GetLeaf(bname)
@@ -262,13 +264,18 @@ def step0(args, products):
     return products
 
 def step1(args, products, nuisances=False, stepname="Step1"):
+#def step1(args, products, nuisances=False, stepname="Step"):
     # run AsymptoticLimits w/ nuisances disabled (default)
     args1 = updateArg(args.args, ["-n","--name"], stepname)
+    print("args1: ", args1)
+    print("args: ", args)
+    print("products: ", products)
     if not nuisances: args1 = updateArg(args1, ["--freezeParameters"], "allConstrainedNuisances", ',')
     args1 = handleInitArgs(args1, products["init_args"])
     cmd1 = "combine -M AsymptoticLimits "+args1
     fprint(cmd1)
     logfname1 = "log_{}_{}.log".format(stepname[0].lower()+stepname[1:],args.name)
+    print('logfname1: ', logfname1)
     products["ofname1"] = ""
     if not args.dry_run:
         if "step1" not in args.reuse: runCmd(cmd1,logfname1)
@@ -318,8 +325,9 @@ def step2impl(args, products, name, lname, ofname, extra=""):
             if "step2" not in args.reuse:
                 runCmd(cmdh, subprocess.PIPE)
                 for ofname_ in [ofname_old,ofname_new]: os.remove(ofname_)
-
+    print("product: ", products)
     return products
+    #print("product: ", products)
 
 def step2(args, products):
     asimov_args = "-t -1 --toysFreq"
@@ -532,17 +540,26 @@ def step3(args, products):
         hist.SetMinimum(0)
         cls_graph.Draw('l')
         cls_graph.SetLineColor(r.kBlack)
+        cls_graph.SetLineWidth(2)
         cls_graph.SetLineStyle(7)
         clsb_graph.Draw('l')
         clsb_graph.SetLineColor(r.kRed)
+        clsb_graph.SetLineWidth(2)
         clb_graph.Draw('l')
         clb_graph.SetLineColor(r.kBlue)
+        clb_graph.SetLineWidth(2)
         clb_graph.SetLineStyle(7)
         for q in quantiles:                                       
             cls_exp_graph[q].Draw('l')
-            if q==0.5: cls_exp_graph[q].SetLineColor(r.kGray+2)
-            if q==0.16 or q==0.84: cls_exp_graph[q].SetLineColor(r.kGray+1)
-            if q==0.025 or q==0.975: cls_exp_graph[q].SetLineColor(r.kGray)
+            if q==0.5: 
+              cls_exp_graph[q].SetLineColor(r.kGray+2)
+              cls_exp_graph[q].SetLineWidth(2)
+            if q==0.16 or q==0.84: 
+	      cls_exp_graph[q].SetLineColor(r.kGray+1)
+              cls_exp_graph[q].SetLineWidth(2)
+            if q==0.025 or q==0.975: 
+	      cls_exp_graph[q].SetLineColor(r.kGray)
+  	      cls_exp_graph[q].SetLineWidth(2)
         line = r.TLine(rmin, 0.05, rmax, 0.05)
         line.SetLineColor(r.kGreen)
         line.Draw()
@@ -696,6 +713,7 @@ def step5(args, products, title="ManualCLs"):
         
         # output
         products["ofname5"] = products["ofname1"].replace("AsymptoticLimits",title).replace("Step1","")
+	#products["ofname5"] = products["ofname1"].replace("AsymptoticLimits",title).replace("Step","")
         ofile = r.TFile.Open(products["ofname5"], "RECREATE")
         ofile.cd()
         newtree.Write()
@@ -708,6 +726,7 @@ def step5(args, products, title="ManualCLs"):
 
 def manualCLs(args):
     products = defaultdict(lambda: None)
+    #print('product is: ', products)
 
     # 0. b-only fit if requested for initCLs
     if args.bonly:

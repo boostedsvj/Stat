@@ -12,8 +12,9 @@ def getXsecs(fname):
     with open(fname,'r') as xfile:
         xsecs = {xline.split('\t')[0]: float(xline.split('\t')[1]) for xline in xfile}
     return xsecs
-
+#hists.btoy.123456.root
 def getFromToyfile(toyfile,match,replace=True,delim='.'):
+    print("match:", match)
     def match_text(item,match):
         return match in item
     def match_int(item,match):
@@ -81,8 +82,8 @@ def doLimit(info):
             if isinstance(args.init,dict): setargs.extend(args.init[region].split(','))
             else: setargs.extend(getInitFromBF(fname, args.default_ws, getPname(region, "Alt" in args.mod)))
 
-    for ch in ["ch1","ch2"]:
-        normargs = ["n_exp_bin{}_proc_roomultipdf".format(ch),"shapeBkg_roomultipdf_{}__norm".format(ch),"n_exp_final_bin{}_proc_roomultipdf".format(ch),"n_exp_final_bin{}_proc_{}".format(ch,signame)]
+    for ch in ["ch1"]:
+        normargs = ["n_exp_bin{}_proc_roomultipdf".format(ch),"shapeBkg_roomultipdf_{}__norm".format(ch),"n_exp_final_bin{}_proc_roomultipdf".format(ch),"n_exp{}_bin{}_proc_{}".format("_final" if not args.noFinalNorm else "",ch,signame)]
         trkargs.extend(normargs)
         treargs.extend(normargs)
         if args.freezeNorm: frzargs.append("shapeBkg_roomultipdf_{}__norm".format(ch))
@@ -141,7 +142,7 @@ def doLimit(info):
                 injected = int(getFromToyfile(args.toyfile,"mZprime",delim='_')) if "sigtoy" in args.toyfile else 0
                 for q in [-3, -2, -1, 0.5]:
                     for region in args.combo_regions:
-                        pargs = [sig,args.cname,"ManualCLsFit",q,dfile,args.datacards,obs,injected,args.combo,region,None,None,True]
+                        pargs = [sig,args.cname,"ManualCLsFit",q,dfile,args.datacards,obs,injected,args.combo,region,None,None,True,args.noFinalNorm]
                         try_plot_command(makePostfitPlot, "makePostfitPlot({})", pargs, outputs, args.npool!=0)
     os.chdir(args.pwd)
 
@@ -269,8 +270,9 @@ if __name__=="__main__":
     parser.add_argument("--asimov", dest="asimov", default=False, action="store_true", help="toy file contains asimov dataset")
     parser.add_argument("-a", "--args", dest="args", type=str, default="", help="extra args for combine")
     parser.add_argument("-p", "--plots", dest="plots", default=False, action="store_true", help="make plots")
-    parser.add_argument("--datacards", dest="datacards", type=str, default="root://cmseos.fnal.gov//store/user/pedrok/SVJ2017/Datacards/trig7/sigfull/", help="datacard histogram location (for postfit plots)")
+    parser.add_argument("--datacards", dest="datacards", type=str, default=os.environ["CMSSW_BASE"]+"/src/Stat/Limits/test", help="datacard histogram location (for postfit plots)")
     parser.add_argument("-u", "--update-xsec", dest="updateXsec", type=str, metavar=('filename','suffix'), default=[], nargs=2, help="info to update cross sections when hadding")
+    parser.add_argument("--no-final-norm", dest="noFinalNorm", default=False, action="store_true", help="indicate that combine does not create n_exp_final for signal (just use n_exp)")
     args = parser.parse_args()
 
     args.seedname = None

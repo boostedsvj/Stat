@@ -48,7 +48,8 @@ def main(args):
         toyfile = r.TFile.Open(toyfname)
         for region in regions:
             channel = getChannel(region)
-            fullregion = "{}_2018".format(region)
+            #fullregion = "{}_2018".format(region)
+            fullregion = "{}".format(region)
             hdata = toyfile.Get("toys/toy_{}".format("asimov" if args.asimov else "1")).reduce("CMS_channel==CMS_channel::{}".format(channel))
             hist = r.RooAbsData.createHistogram(hdata, "mH{}".format(fullregion))
             # fix error bars

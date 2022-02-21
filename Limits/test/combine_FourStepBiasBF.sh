@@ -14,8 +14,8 @@ cores=${10}
 eosArea=${11}
 
 SVJ_NAME="SVJ_mZprime${mZ}_mDark${mD}_rinv${rI}_alpha${aD}"
-DC_NAME="${SVJ_NAME}_${REGION}_2018_template_bias.txt"
-WS_NAME="ws_${SVJ_NAME}_${REGION}_2018_template.root"
+DC_NAME="${SVJ_NAME}_${REGION}_template_bias.txt"
+WS_NAME="ws_${SVJ_NAME}_${REGION}_template.root"
 
 if [ -n "$eosArea" ]; then
 	export EOSDIR=${eosArea}/${SVJ_NAME}
@@ -45,21 +45,21 @@ echo "TrkArgFit: $TrkArgFit"
 if [ ${genFunc} -eq 0 ]
 then
   genName="${REGION}${optName}Sig${expSig}GenMain"
-  genPdfName="Bkg_${REGION}_2018"
+  genPdfName="Bkg_${REGION}"
 elif [ ${genFunc} -eq 1 ]
 then
   genName="${REGION}${optName}Sig${expSig}GenAlt"
-  genPdfName="Bkg_Alt_${REGION}_2018"
+  genPdfName="Bkg_Alt_${REGION}"
 fi
 
 if [ ${fitFunc} -eq 0 ]
 then
   fitName="${genName}FitMain"
-  pdfName="Bkg_${REGION}_2018"
+  pdfName="Bkg_${REGION}"
 elif [ ${fitFunc} -eq 1 ]
 then
   fitName="${genName}FitAlt"
-  pdfName="Bkg_Alt_${REGION}_2018"
+  pdfName="Bkg_Alt_${REGION}"
 fi
 
 if [ "$genFunc" -ne "$fitFunc" ]; then
