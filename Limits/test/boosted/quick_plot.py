@@ -218,14 +218,6 @@ def plot_mt_distribution(args):
     if cmd_exists('imgcat'): os.system('imgcat test.png')
 
 
-class AttrDict(dict):
-    """
-    Like a dict, but with access via attributes
-    """
-    def __init__(self, *args, **kwargs):
-        super(AttrDict, self).__init__(*args, **kwargs)
-        self.__dict__ = self
-
 
 def get_cls(obs_arrays, asimov_arrays):
     from scipy.stats import norm
@@ -249,7 +241,7 @@ def get_cls(obs_arrays, asimov_arrays):
         mu = mu[order]
         dnll = dnll[order]
         quantile = quantile[order]
-        return AttrDict(mu_best=mu_best, dnll_best=dnll_best, mu=mu, dnll=dnll, quantile=quantile, n=mu.shape[0])
+        return bsvj.AttrDict(mu_best=mu_best, dnll_best=dnll_best, mu=mu, dnll=dnll, quantile=quantile, n=mu.shape[0])
 
     def align_mu_values(obs, asimov):
         """
@@ -302,7 +294,7 @@ def get_cls(obs_arrays, asimov_arrays):
         1. - norm.cdf( safe_divide(.5*(q_obs-q_A) , np.sqrt(q_obs)) )
         )
     s = sb / b
-    return AttrDict(s=s, b=b, sb=sb, q_obs=q_obs, q_A=q_A, obs=obs, asimov=asimov, s_exp=s_exp)
+    return bsvj.AttrDict(s=s, b=b, sb=sb, q_obs=q_obs, q_A=q_A, obs=obs, asimov=asimov, s_exp=s_exp)
 
 
 def interpolate_95cl_limit(cls):
@@ -311,7 +303,7 @@ def interpolate_95cl_limit(cls):
         select = (cl < .15)
         order = np.argsort(cl[select])
         return np.interp(.05, cl[select][order], mu[select][order])
-    d = AttrDict()
+    d = bsvj.AttrDict()
     d['twosigma_down'] = interpolate(cls.s_exp[0.975])
     d['onesigma_down'] = interpolate(cls.s_exp[0.84])
     d['expected'] = interpolate(cls.s_exp[0.5])

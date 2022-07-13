@@ -46,6 +46,7 @@ def debug(flag=True):
     """Sets the logger level to debug (for True) or warning (for False)"""
     logger.setLevel(logging.DEBUG if flag else DEFAULT_LOGGING_LEVEL)
 
+
 def mpl_fontsizes(small=14, medium=18, large=24):
     import matplotlib.pyplot as plt
     plt.rc('font', size=small)          # controls default text sizes
@@ -60,32 +61,18 @@ def mpl_fontsizes(small=14, medium=18, large=24):
 def uid():
     return str(uuid.uuid4())
 
-@contextmanager
-def open_root(path, mode='READ'):
-    '''Context manager that takes care of closing the ROOT file properly'''
-    try:
-        tfile = ROOT.TFile.Open(path, mode)
-        yield tfile
-    finally:
-        tfile.Close()
 
-def get_ws(f, wsname=None):
+class AttrDict(dict):
     """
-    Functionality to grab the first workspace that's encountered in a rootfile
+    Like a dict, but with access via attributes
     """
-    if wsname is None:
-        # Pick the first one
-        for key in f.GetListOfKeys():
-            obj = f.Get(key.GetName())
-            if isinstance(obj, ROOT.RooWorkspace):
-                ws = obj
-                break
-        else:
-            f.ls()
-            raise Exception('No workspace found in {0}'.format(f))
-    else:
-        ws = f.Get(wsname)
-    return ws
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+
+# _______________________________________________________________________
+# Model building code: Bkg fits, fisher testing, etc.
 
 def dump_fits_to_file(filename, results):
     logger.info('Dumping fit results to ' + filename)
@@ -343,6 +330,7 @@ def get_mt(mt_min=160., mt_max=500., n_bins=43, name='mHbsvj'):
     mt.mt_max = mt_max
     return mt
 
+
 def get_mt_from_th1(histogram, name=None):
     """
     Returns mT from the x axis of a TH1 histogram.
@@ -357,29 +345,6 @@ def get_mt_from_th1(histogram, name=None):
         )
     object_keeper.add(mt)
     return mt
-
-
-class ROOTObjectKeeper:
-    """
-    Keeps ROOT objects in it so ROOT doesn't garbage collect them.
-    """
-    def __init__(self):
-        self.objects = {}
-    
-    def add(self, thing):
-        try:
-            key = thing.GetName()
-        except AttributeError:
-            key = str(uuid.uuid4())
-        if key in self.objects:
-            logger.warning('Variable %s (%s) already in object keeper', thing.GetName(), thing.GetTitle())
-        self.objects[key] = thing
-
-    def add_multiple(self, things):
-        for t in things: self.add(t)
-
-
-object_keeper = ROOTObjectKeeper()
 
 
 def build_rpsbp(name, expression, mt, parameters, histogram):
@@ -412,6 +377,7 @@ def build_rpsbp(name, expression, mt, parameters, histogram):
         )
     return parametric_shape_bin_pdf
 
+
 def rebuild_rpsbp(pdf):
     name = uid()
     def remake_parameter(parameter):
@@ -425,6 +391,7 @@ def rebuild_rpsbp(pdf):
         name, pdf.expression, pdf.parameters[0],
         [remake_parameter(p) for p in pdf.parameters[1:]], pdf.histogram
         )
+
 
 def pdf_expression(pdf_type, npars, mt_scale='1000'):
     if pdf_type == 'main':
@@ -468,6 +435,7 @@ def make_pdf(pdf_type, npars, bkg_hist, mt=None, name=None, mt_scale='1000', **k
     else:
         raise Exception('Unknown pdf type {0}'.format(pdf_type))
 
+
 def make_main_pdf(npars, bkg_hist, mt, name=None, mt_scale='1000'):
     # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
     # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
@@ -502,6 +470,7 @@ def make_main_pdf(npars, bkg_hist, mt, name=None, mt_scale='1000'):
     object_keeper.add_multiple(parameters)
     return build_rpsbp(pdf_name, expression.format(mt_scale), mt, parameters, bkg_hist)
 
+
 def make_alt_pdf(npars, bkg_hist, mt, name=None, mt_scale='1000', par_lo=-50., par_up=50.):
     pdf_name = 'bsvj_bkgfitalt_npars'+str(npars) if name is None else name
     parameters = [
@@ -516,8 +485,10 @@ def make_alt_pdf(npars, bkg_hist, mt, name=None, mt_scale='1000', par_lo=-50., p
 def get_main_pdfs(bkg_hist, mt, mt_scale='1000'):
     return [make_main_pdf(npars, bkg_hist, mt, mt_scale=mt_scale) for npars in range(2,6)]
 
+
 def get_alt_pdfs(bkg_hist, mt, mt_scale='1000'):
     return [make_alt_pdf(npars, bkg_hist, mt, mt_scale=mt_scale) for npars in range(1,5)]
+
 
 def get_pdfs(pdftype, *args, **kwargs):
     if pdftype == 'main':
@@ -586,6 +557,7 @@ def fit_pdf_to_datahist(pdf, data_hist, init_vals=None, init_ranges=None):
 
 def to_list(rooarglist):
     return [rooarglist.at(i) for i in range(rooarglist.getSize())]
+
 
 def get_variables(rooabsarg):
     """
@@ -753,6 +725,7 @@ def pdf_ploton_frame(frame, pdf, norm):
         ROOT.RooFit.Format("NEAU")
         )
 
+
 def data_ploton_frame(frame, data, is_data=True):
     data_graph = data.plotOn(
         frame,
@@ -788,60 +761,6 @@ def get_chi2_viaframe(mt, pdf, data, n_fit_parameters):
     chi2 = roochi2 * ndf
     roopro = ROOT.TMath.Prob(chi2, ndf)
     return roochi2, chi2, roopro, ndf
-
-def get_chi2(mt, pdf, data, n_fit_parameters, norm=None):
-    """
-    Calculate chi2 of pdf on data by reading bin-by-bin the fit
-    value and the data value.
-
-    This is much slower than the `get_chi2_viaframe` function.
-    Do not use this.
-    """
-    h_pdf = pdf.createHistogram('dummy', mt)
-    h_data = data.createHistogram('dummy2', mt)
-    raw_chi2 = 0.
-    n_bins = 0
-    for i in range(h_pdf.GetNbinsX()):
-        val_pdf = h_pdf.GetBinContent(i) * (data.sumEntries() if norm is None else norm)
-        val_data = h_data.GetBinContent(i)
-        if val_data == 0.: continue
-        raw_chi2 += (val_pdf-val_data)**2 / val_pdf
-        n_bins += 1
-    ndf = n_bins - n_fit_parameters
-    chi2 = raw_chi2 / ndf
-    from scipy import stats
-    prob = stats.distributions.chi2.sf(raw_chi2, ndf) # or cdf?
-    return chi2, raw_chi2, prob, ndf
-
-
-def get_rss(mt, pdf, data, norm=None):
-    """
-    Manual RSS calculation avoiding plotting.
-    For some reason this is much slower than the plotting-way.
-    Do not use this.
-    """
-    h_pdf = pdf.createHistogram('dummy', mt)
-    h_data = data.createHistogram('dummy2', mt)
-    rss = 0.
-    for i in range(h_pdf.GetNbinsX()):
-        val_pdf = h_pdf.GetBinContent(i) * (data.sumEntries() if norm is None else norm)
-        val_data = h_data.GetBinContent(i)
-        if val_data == 0.: continue
-        if logger.level <= logging.DEBUG:
-            left_pdf = h_pdf.GetBinLowEdge(i)
-            right_pdf = left_pdf + h_pdf.GetBinWidth(i)
-            left_data = h_data.GetBinLowEdge(i)
-            right_data = left_data + h_data.GetBinWidth(i)
-            logger.debug(
-                '{i}:'
-                '\n  pdf  ({left_pdf:8.1f}:{right_pdf:8.1f}): {val_pdf:8.3f}'
-                '\n  data ({left_data:8.1f}:{right_data:8.1f}): {val_data:8.3f}'
-                .format(**locals())
-                )
-        rss += (val_pdf-val_data)**2
-    rss = sqrt(rss)
-    logger.debug('rss_manual:', rss)
-    return rss
 
 
 def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
@@ -892,7 +811,10 @@ def get_rss_viaframe(mt, pdf, data, norm=None, return_n_bins=False):
 
 def do_fisher_test(mt, data, pdfs, a_crit=.07):
     """
-
+    Does a Fisher test. First computes the cl_vals for all combinations
+    of pdfs, then picks the winner.
+    
+    Returns the pdf that won.
     """
     rsss = [ get_rss_viaframe(mt, pdf, data, return_n_bins=True) for pdf in pdfs ]
     # Compute test values of all combinations beforehand
@@ -924,6 +846,9 @@ def do_fisher_test(mt, data, pdfs, a_crit=.07):
         logger.info('alpha values of pdf i vs j:\n' + tabelize(table))
     return winner
     
+
+# _______________________________________________________________________
+# For combine
 
 class Datacard:
     def __init__(self):
@@ -985,7 +910,7 @@ def transpose(l):
 
 def tabelize(data):
     '''
-    Formats a list of lists to a single string (no seps).
+    Formats a list of lists to a single string (space separated).
     Rows need not be of same length.
     '''
     # Ensure data is strings
@@ -1075,29 +1000,10 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
         f.write(txt)
 
 
-def th1_binning_and_values(h, return_errs=False):
-    """
-    Returns the binning and values of the histogram.
-    Does not include the overflows.
-    """
-    n_bins = h.GetNbinsX()
-    # GetBinLowEdge of the right overflow bin is the high edge of the actual last bin
-    binning = np.array([h.GetBinLowEdge(i) for i in range(1,n_bins+2)])
-    values = np.array([h.GetBinContent(i) for i in range(1,n_bins+1)])
-    errs = np.array([h.GetBinError(i) for i in range(1,n_bins+1)])
-    return (binning, values, errs) if return_errs else (binning, values)
-
-def th1_to_datahist(histogram, mt=None):
-    if mt is None: mt = get_mt_from_th1(histogram)
-    datahist = ROOT.RooDataHist(uid(), '', ROOT.RooArgList(mt), histogram, 1.)
-    datahist.mt = mt
-    return datahist
-
-
-
 def camel_to_snake(name):
     name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+
 
 class CombineCommand:
 
@@ -1113,10 +1019,11 @@ class CombineCommand:
         self.dc = dc
         self.method = method
         self.args = set() if args is None else args
-        self.kwargs = {} if kwargs is None else kwargs
+        self.kwargs = OrderedDict()
+        if kwargs: self.kwargs.update(kwargs)
         for key in self.comma_separated_arg_map: setattr(self, key, [])
-        self.parameters = {}
-        self.parameter_ranges = {}
+        self.parameters = OrderedDict()
+        self.parameter_ranges = OrderedDict()
 
     @property
     def name(self):
@@ -1218,6 +1125,7 @@ def run_command(cmd, chdir=None):
             raise subprocess.CalledProcessError(cmd, returncode)
         return output
 
+
 def run_combine_command(cmd, chdir=None):
     if chdir:
         # Fix datacard to be an absolute path first
@@ -1225,6 +1133,42 @@ def run_combine_command(cmd, chdir=None):
         cmd.dc = osp.abspath(cmd.dc)
     logger.info('Running {0}'.format(cmd))
     return run_command(cmd.str, chdir)
+
+
+# _______________________________________________________________________
+# ROOT and RooFit interface
+
+@contextmanager
+def open_root(path, mode='READ'):
+    '''Context manager that takes care of closing the ROOT file properly'''
+    try:
+        tfile = ROOT.TFile.Open(path, mode)
+        yield tfile
+    finally:
+        tfile.Close()
+
+
+class ROOTObjectKeeper:
+    """
+    Keeps ROOT objects in it so ROOT doesn't garbage collect them.
+    """
+    def __init__(self):
+        self.objects = {}
+    
+    def add(self, thing):
+        try:
+            key = thing.GetName()
+        except AttributeError:
+            key = str(uuid.uuid4())
+        if key in self.objects:
+            logger.warning('Variable %s (%s) already in object keeper', thing.GetName(), thing.GetTitle())
+        self.objects[key] = thing
+
+    def add_multiple(self, things):
+        for t in things: self.add(t)
+
+
+object_keeper = ROOTObjectKeeper()
 
 
 def get_arrays(rootfile, treename='limit'):
@@ -1238,34 +1182,56 @@ def get_arrays(rootfile, treename='limit'):
                 r[b].append(getattr(entry, b))
     return {k : np.array(v) for k, v in r.items()}
 
-    
-def test_combine_command():
-    cmd = CombineCommand('bla.txt')
-    cmd.aaa = 5
-    print(cmd.aaa)
-    cmd.kwargs['--test'] = .1
-    cmd.kwargs['--test2'] = 'NO'
-    cmd.args.add('--saveNLL')
-    print(cmd.freeze_parameters)
-    cmd.freeze_parameters.append('x')
-    print(cmd.freeze_parameters)
 
-    # cmd.add_range('x', .4, 1.6)
-    # cmd.add_range('x', .4, 2.6)
-    # cmd.add_range('y', 100, 101)
-
-    # cmd.set_parameter('x', 1.)
-    # cmd.set_parameter('y', 2.)
-
-    print(cmd.parameters)
-
-    print(cmd)
-    print(cmd.str)
-    return cmd
+def get_ws(f, wsname=None):
+    """
+    Functionality to grab the first workspace that's encountered in a rootfile
+    """
+    if wsname is None:
+        # Pick the first one
+        for key in f.GetListOfKeys():
+            obj = f.Get(key.GetName())
+            if isinstance(obj, ROOT.RooWorkspace):
+                ws = obj
+                break
+        else:
+            f.ls()
+            raise Exception('No workspace found in {0}'.format(f))
+    else:
+        ws = f.Get(wsname)
+    return ws
 
 
-# _______________________________________________________
-# RooFit interface
+def th1_to_hist(h):
+    n_bins = h.GetNbinsX()
+    # GetBinLowEdge of the right overflow bin is the high edge of the actual last bin
+    return AttrDict(
+        binning = np.array([h.GetBinLowEdge(i) for i in range(1,n_bins+2)]),
+        values = np.array([h.GetBinContent(i) for i in range(1,n_bins+1)]),
+        errs = np.array([h.GetBinError(i) for i in range(1,n_bins+1)])
+        )
+
+
+def th1_binning_and_values(h, return_errs=False):
+    """
+    Returns the binning and values of the histogram.
+    Does not include the overflows.
+    """
+    logger.warning('DEPRECATED: Use th1_to_hist instead')
+    n_bins = h.GetNbinsX()
+    # GetBinLowEdge of the right overflow bin is the high edge of the actual last bin
+    binning = np.array([h.GetBinLowEdge(i) for i in range(1,n_bins+2)])
+    values = np.array([h.GetBinContent(i) for i in range(1,n_bins+1)])
+    errs = np.array([h.GetBinError(i) for i in range(1,n_bins+1)])
+    return (binning, values, errs) if return_errs else (binning, values)
+
+
+def th1_to_datahist(histogram, mt=None):
+    if mt is None: mt = get_mt_from_th1(histogram)
+    datahist = ROOT.RooDataHist(uid(), '', ROOT.RooArgList(mt), histogram, 1.)
+    datahist.mt = mt
+    return datahist
+
 
 def binning_from_roorealvar(x):
     binning = [x.getMin()]
@@ -1298,10 +1264,3 @@ def pdf_values(pdf, x_vals, varname='mt'):
         y.append(pdf.getVal())
     y = np.array(y)
     return y / (y.sum() if y.sum()!=0. else 1.)
-
-# _______________________________________________________
-
-
-
-if __name__ == '__main__':
-    cmd = test_combine_command()
