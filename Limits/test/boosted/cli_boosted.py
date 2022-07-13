@@ -38,44 +38,6 @@ def test_eval_expression():
         )
     assert add_normalization('@0*@1') == '@2*(@0*@1)'
 
-@is_script
-def python_fit():
-    from pprint import pprint
-    import numpy as np
-    bdt_score = .1
-    bdt_str = '{:.1f}'.format(bdt_score).replace('.', 'p')
-    mt = get_mt(220, 800, 36)
-    with open_root('newmtbinning_dataobs.root') as tf:
-        tdir = tf.Get('bsvj_'+bdt_str)
-        bkg_hist = tdir.Get('Bkg')
-        pdf = get_main_pdfs(bkg_hist, mt)[3]
-    # res = fit_pdf_expression_to_histogram_python(pdf.expression, bkg_hist)
-    # print(res)
-
-    from pprint import pprint
-
-    pprint(dir(pdf.getPdf()))
-
-    print(pdf.getPdf().dependents())
-
-    # argset = pdf.getComponents()
-
-    # fwdit = argset.fwdIterator()
-    # for i in range(argset.getSize()):
-    #     a = fwdit.next()
-    #     print a
-
-    # print a.GetName()
-    # pprint(dir(a))
-
-    # print a.getVariables()
-    
-    # fwdit = a.getVariables().fwdIterator()
-    # for i in range(argset.getSize()):
-    #     av = fwdit.next()
-    #     print av
-
-
 
 def fit_scipy(pdf_type, npars, histogram):
     return fit_expr_to_histogram_robust(pdf_expression(pdf_type, npars), histogram)
@@ -192,13 +154,13 @@ def plot_roofit_fits():
                         osp.join(plotdir, '{0}_{1}_npar{2}.png'.format(tdir.GetName(), pdf_type, npars)),
                         labels=['Scipy only', 'RooFit only', 'RooFit init w/ scipy']
                         )
-                    print '-'*60
-                    print 'Summary of varous fit strategies'
-                    print '\nScipy only:'
-                    print res_scipy
-                    print '\nRooFit with initial parameters from Scipy:'
+                    print('-'*60)
+                    print('Summary of varous fit strategies')
+                    print('\nScipy only:')
+                    print(res_scipy)
+                    print('\nRooFit with initial parameters from Scipy:')
                     res_roofit_wscipy.Print()
-                    print '\nRooFit with initial parameters set to 1.:'
+                    print('\nRooFit with initial parameters set to 1.:')
                     res_roofit_only.Print()
 
         if args.bdtcut is not None:
@@ -249,6 +211,96 @@ def plot_roofit_fits():
 
 
 
+def this_fn_name():
+    """
+    Returns the name of whatever function this function was called from.
+    (inspect.stack()[0][3] would be "this_fn_name"; [3] is just the index for names)
+    """
+    return inspect.stack()[1][3]
+
+
+@is_script
+def gen_datacard_ul():
+    """
+    Full datacard for UL
+    """
+    parser = argparse.ArgumentParser(this_fn_name())
+    parser.add_argument('jsonfile', type=str)
+    parser.add_argument('-b', '--bdtcut', type=float, default=.1)
+    parser.add_argument('-i', '--injectsignal', action='store_true')
+    args = parser.parse_args()
+    bdt_str = '{:.1f}'.format(args.bdtcut).replace('.', 'p')
+
+    import json
+    with open(args.jsonfile, 'r') as f:
+        d = json.load(f)
+
+    mt_binning = d['mt']
+
+    # Cut off left part of mt distr: Find first bin >300 GeV
+    for i in range(len(mt_binning)-1):
+        if mt_binning[i] >= 300.:
+            i_bin_min = i
+            break
+    else:
+        raise Exception()
+
+    logger.info('Starting mt from {}'.format(mt_binning[i_bin_min]))
+    mt_binning = mt_binning[i_bin_min:]
+    n_bins = len(mt_binning)-1
+    mt = get_mt(mt_binning[0], mt_binning[-1], n_bins, name='mt')
+
+    def construct_th1_from_hist(name, hist):
+        th1 = ROOT.TH1F(name, name, n_bins, array('f', mt_binning))
+        ROOT.SetOwnership(th1, False)
+        vals = hist['vals'][i_bin_min:]
+        errs = hist['errs'][i_bin_min:]
+        assert len(vals) == n_bins
+        assert len(errs) == n_bins
+        for i in range(n_bins):
+            th1.SetBinContent(i+1, vals[i])
+            th1.SetBinError(i+1, errs[i])
+        return th1
+
+    # Construct the bkg TH1
+    bkg_hist = d['histograms']['{:.1f}/bkg'.format(args.bdtcut)]
+    bkg_th1 = construct_th1_from_hist('bkg', bkg_hist)
+
+    # data RooDataHist: just the bkg now
+    data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
+
+    def fit(pdf):
+        res_scipy = fit_scipy(pdf.pdftype, pdf.npars, bkg_th1)
+        res_roofit_wscipy = fit_roofit(pdf.pdftype, pdf.npars, bkg_th1, init_vals=res_scipy.x)
+        return res_roofit_wscipy
+
+    winner_pdfs = []
+    for pdf_type in ['main', 'alt']:
+        pdfs = get_pdfs(pdf_type, bkg_th1, mt)
+        ress = [ fit(pdf) for pdf in pdfs ]
+        i_winner = do_fisher_test(mt, data_datahist, pdfs)
+        winner_pdfs.append(pdfs[i_winner])
+        plot_fits(pdfs, ress, data_datahist, pdf_type + '.pdf')
+
+    systs = [['lumi', 'lnN', 1.026, '-']]
+
+
+    for mz in [450]:
+        sig_name = 'mz{}'.format(mz)
+        sig_hist = d['histograms']['{:.1f}/{}'.format(args.bdtcut, sig_name)]
+        sig_th1 = construct_th1_from_hist(sig_name, sig_hist)
+        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
+
+        if args.injectsignal:
+            logger.info('Injecting signal in data_obs')
+            data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1+sig_th1, 1.)
+
+        compile_datacard_macro(
+            winner_pdfs, data_datahist, sig_datahist,
+            strftime('dc_%b%d/dc_mz{}_bdt{}.txt'.format(mz, bdt_str)),
+            systs=systs
+            )
+
 @is_script
 def gen_datacard():
     """
@@ -257,6 +309,7 @@ def gen_datacard():
     parser = argparse.ArgumentParser(inspect.stack()[0][3])
     parser.add_argument('rootfile', type=str)
     parser.add_argument('-b', '--bdtcut', type=float, default=.1)
+    parser.add_argument('-i', '--injectsignal', action='store_true')
     args = parser.parse_args()
 
     bdt_str = '{:.1f}'.format(args.bdtcut).replace('.', 'p')
@@ -265,8 +318,7 @@ def gen_datacard():
         tdir = tf.Get('bsvj_'+bdt_str)
         bkg_hist = tdir.Get('Bkg')
         mt = get_mt_from_th1(bkg_hist, name='mt')
-        data_hist = tdir.Get('data_obs')
-        data_obs = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), tdir.Get('data_obs'), 1.)
+        data_th1 = tdir.Get('data_obs')
         signals = [
             ROOT.RooDataHist(
                 signal_name(mz), signal_name(mz), ROOT.RooArgList(mt),
@@ -274,6 +326,9 @@ def gen_datacard():
                 )
             for mz in [250, 300, 350]
             ]
+        signal_th1s = [ tdir.Get(signal_name(mz)) for mz in [250, 300, 350] ]
+
+    data_obs = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1, 1.)
 
     def fit(pdf):
         res_scipy = fit_scipy(pdf.pdftype, pdf.npars, bkg_hist)
@@ -292,9 +347,118 @@ def gen_datacard():
     # return
 
     systs = [['lumi', 'lnN', 1.026, '-']]
-    for mz, sig in zip([250, 300, 350], signals):
+    for mz, sig, sig_th1 in zip([250, 300, 350], signals, signal_th1s):
+        if mz != 250: continue
+        if args.injectsignal:
+            logger.warning('Using b+s as the data!')
+            data_obs = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), data_th1+sig_th1, 1.)
         compile_datacard_macro(winner_pdfs, data_obs, sig, strftime('dc_%b%d/dc_mz{}_bdt{}.txt'.format(mz, bdt_str)), systs=systs)
 
+
+@is_script
+def test_uninit_fit():
+    parser = argparse.ArgumentParser(inspect.stack()[0][3])
+    parser.add_argument('datacard', type=str)
+    parser.add_argument('-c', '--chdir', type=str, default=None)
+    args = parser.parse_args()
+
+    cmd = CombineCommand(args.datacard, 'AsymptoticLimits')
+    cmd.track_parameters.extend(['r'])
+    cmd.args.add('--saveWorkspace')
+    cmd.set_parameter('pdf_index', 1)
+    cmd.freeze_parameters.extend([
+        'pdf_index',
+        r'rgx{bsvj_bkgfitmain_npars.*}'
+        # 'bsvj_bkgfitmain_npars4_p1', 'bsvj_bkgfitmain_npars4_p2', 'bsvj_bkgfitmain_npars4_p3',
+        # 'bsvj_bkgfitmain_npars4_p4',
+        # 'bsvj_bkgfitalt_npars3_p1', 'bsvj_bkgfitalt_npars3_p2', 'bsvj_bkgfitalt_npars3_p3'
+        ])
+    run_combine_command(cmd, args.chdir)
+
+
+@is_script
+def test_multidimfit():
+    parser = argparse.ArgumentParser(inspect.stack()[0][3])
+    parser.add_argument('datacard', type=str)
+    parser.add_argument('-c', '--chdir', type=str, default=None)
+    parser.add_argument('-a', '--asimov', action='store_true')
+    args = parser.parse_args()
+
+    cmd = CombineCommand(args.datacard, 'MultiDimFit')
+    cmd.track_parameters.extend(['r'])
+    cmd.args.add('--saveWorkspace')
+    cmd.args.add('--saveNLL')
+    if args.asimov:
+        cmd.kwargs['-t'] = '-1'
+        cmd.args.add('--toysFreq')
+    cmd.set_parameter('pdf_index', 1)
+    cmd.freeze_parameters.extend(['pdf_index', r'rgx{bsvj_bkgfitmain_npars.*}'])
+
+    cmd.redefine_signal_pois.append('r')
+    cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
+    cmd.track_parameters.extend(['r'])
+
+    run_combine_command(cmd, args.chdir)
+
+
+@is_script
+def test_likelihood_scan():
+    parser = argparse.ArgumentParser(inspect.stack()[0][3])
+    parser.add_argument('datacard', type=str)
+    parser.add_argument('-c', '--chdir', type=str, default=None)
+    parser.add_argument('-a', '--asimov', action='store_true')
+    parser.add_argument('--injectsignal', action='store_true')
+    parser.add_argument('-n', '--npoints', type=int, default=51)
+    parser.add_argument('-r', '--range', type=float, default=[-.7, .7], nargs=2)
+    parser.add_argument('-v', '--verbosity', type=int, default=0)
+    args = parser.parse_args()
+
+    cmd = CombineCommand(args.datacard, 'MultiDimFit')
+
+    cmd.redefine_signal_pois.append('r')
+    if args.injectsignal: cmd.kwargs['--expectSignal'] = 1
+    cmd.add_range('r', args.range[0], args.range[1])
+    cmd.track_parameters.extend(['r'])
+
+    cmd.args.add('--saveWorkspace')
+    cmd.args.add('--saveNLL')
+    cmd.kwargs['--algo'] = 'grid'
+    cmd.kwargs['--points'] = args.npoints
+    cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
+    cmd.kwargs['--alignEdges'] = 1
+    cmd.kwargs['-v'] = args.verbosity
+
+    if args.asimov:
+        cmd.kwargs['-t'] = '-1'
+        cmd.args.add('--toysFreq')
+        cmd.kwargs['-n'] = 'Asimov'
+    else:
+        cmd.kwargs['-n'] = 'Observed'
+
+    if args.injectsignal: cmd.kwargs['-n'] += 'InjectedSig'
+
+    cmd.set_parameter('pdf_index', 1)
+    cmd.freeze_parameters.extend([
+        'pdf_index',
+        # r'rgx{bsvj_bkgfitmain_npars.*}'
+        'bsvj_bkgfitmain_npars4_p1', 'bsvj_bkgfitmain_npars4_p2', 'bsvj_bkgfitmain_npars4_p3',
+        'bsvj_bkgfitmain_npars4_p4',
+        # 'bsvj_bkgfitalt_npars3_p1', 'bsvj_bkgfitalt_npars3_p2', 'bsvj_bkgfitalt_npars3_p3'
+        ])
+
+    run_combine_command(cmd, args.chdir)
+
+
+@is_script
+def printws():
+    parser = argparse.ArgumentParser(inspect.stack()[0][3])
+    parser.add_argument('rootfile', type=str)
+    parser.add_argument('-w', '--workspace', type=str)
+    args = parser.parse_args()
+    with open_root(args.rootfile) as f:
+        ws = get_ws(f, args.workspace)
+    ws.Print()
+    return ws
 
 
 @is_script
@@ -412,10 +576,10 @@ def reimplemented_getCard():
         binMax = histData.FindBin(mt_max)
         data_obs = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mT), histData, 1.)
         sig = ROOT.RooDataHist("sig", "Signal", ROOT.RooArgList(mT), histSig, 1.)
-        print "Total data integral: ", histData.Integral()
+        print("Total data integral: ", histData.Integral())
         nBkgEvts = histBkgData.Integral(binMin, binMax)
         nDataEvts = histData.Integral(binMin, binMax)
-        print 'Ranged data integral: ', nDataEvts
+        print('Ranged data integral: ', nDataEvts)
 
         normBkg = ROOT.RooRealVar("Bkg_"+ch+"_norm", "Number of background events", nBkgEvts, 0., 2.e4)
         normData = ROOT.RooRealVar("Data_"+ch+"_norm", "Number of background events", nDataEvts, 0., 2.e4)
@@ -424,7 +588,7 @@ def reimplemented_getCard():
 
         fit_results = []
         for i, rpsbp in enumerate(pdfs):
-            print '\n' + '-'*70 + '\nFitting pdf {}'.format(i+1)
+            print('\n' + '-'*70 + '\nFitting pdf {}'.format(i+1))
             print(data_obs)
             print(rpsbp)
             print(mT)
@@ -440,13 +604,13 @@ def reimplemented_getCard():
                     ROOT.RooFit.Range('Full')
                     )
             except:
-                print 'Problem fitting pdf {}'.format(i+1)
+                print('Problem fitting pdf {}'.format(i+1))
                 raise
             fit_results.append(res)
 
         # Print out fit results
         for i, res in enumerate(fit_results):
-            print '\nResult of fit {}'.format(i+1)
+            print('\nResult of fit {}'.format(i+1))
             res.Print()
 
         # Create output workspace and return
@@ -501,9 +665,9 @@ def test_chi2():
     things = [ 'chi2/ndf', 'chi2', 'prob', 'ndf' ]
 
     for thing, manual, viaframe in zip(things, chi2_manual, chi2_viaframe):
-        print '{thing:8s}: manual={manual:9.3f}, viaframe={viaframe:9.3f}'.format(**locals())
+        print('{thing:8s}: manual={manual:9.3f}, viaframe={viaframe:9.3f}'.format(**locals()))
 
-    print 'viaframe took {}s, manual {}s'.format((t1-t0), (t2-t1))
+    print('viaframe took {}s, manual {}s'.format((t1-t0), (t2-t1)))
 
 
 def test_rss():
@@ -520,7 +684,7 @@ def test_rss():
     pdf = pdfs[0]
     rss_manual = get_rss(mt, pdf, data_obs, verbose=True)
     rss_viaframe = get_rss_viaframe(mt, pdf, data_obs, verbose=True)
-    print 'rss_manual: {rss_manual:.2f}; rss_viaframe: {rss_viaframe:.2f}'.format(**locals())
+    print('rss_manual: {rss_manual:.2f}; rss_viaframe: {rss_viaframe:.2f}'.format(**locals()))
 
 
 
@@ -551,4 +715,4 @@ if __name__ == '__main__':
     args, other_args = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + other_args
     if args.verbose: debug()
-    _scripts[args.script]()
+    r = _scripts[args.script]()

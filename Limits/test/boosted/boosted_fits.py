@@ -10,12 +10,13 @@ ROOT.gROOT.SetStyle('Plain')
 ROOT.gROOT.SetBatch()
 ROOT.gStyle.SetPadBorderMode(0)
 ROOT.gStyle.SetPadColor(0)
+ROOT.gSystem.Load("libHiggsAnalysisCombinedLimit.so")
 
 from contextlib import contextmanager
 from array import array
 from math import sqrt
 import numpy as np
-import itertools, re, logging, os, os.path as osp, copy
+import itertools, re, logging, os, os.path as osp, copy, subprocess
 from collections import OrderedDict
 
 
@@ -27,7 +28,7 @@ def setup_logger(name='boosted'):
         logger.info('Logger %s is already defined', name)
     else:
         fmt = logging.Formatter(
-            fmt = '\033[33m%(levelname)7s:%(asctime)s:%(module)s:%(lineno)s\033[0m %(message)s',
+            fmt = '\033[33m%(levelname)s:%(asctime)s:%(module)s:%(lineno)s\033[0m %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S'
             )
         handler = logging.StreamHandler()
@@ -37,6 +38,9 @@ def setup_logger(name='boosted'):
         logger.addHandler(handler)
     return logger
 logger = setup_logger()
+subprocess_logger = setup_logger('subp')
+subprocess_logger.handlers[0].formatter._fmt = '\033[34m[%(asctime)s]\033[0m %(message)s'
+
 
 def debug(flag=True):
     """Sets the logger level to debug (for True) or warning (for False)"""
@@ -65,13 +69,35 @@ def open_root(path, mode='READ'):
     finally:
         tfile.Close()
 
+def get_ws(f, wsname=None):
+    """
+    Functionality to grab the first workspace that's encountered in a rootfile
+    """
+    if wsname is None:
+        # Pick the first one
+        for key in f.GetListOfKeys():
+            obj = f.Get(key.GetName())
+            if isinstance(obj, ROOT.RooWorkspace):
+                ws = obj
+                break
+        else:
+            f.ls()
+            raise Exception('No workspace found in {0}'.format(f))
+    else:
+        ws = f.Get(wsname)
+    return ws
+
 def dump_fits_to_file(filename, results):
     logger.info('Dumping fit results to ' + filename)
+    dirname = osp.dirname(osp.abspath(filename))
+    if not osp.isdir(dirname): os.makedirs(dirname)
     with open_root(filename, 'RECREATE') as tf:
         for result in results: result.Write()
 
 def dump_ws_to_file(filename, ws):
     logger.info('Dumping pdfs ws to ' + filename)
+    dirname = osp.dirname(osp.abspath(filename))
+    if not osp.isdir(dirname): os.makedirs(dirname)
     wstatus = ws.writeToFile(filename, True)
     return wstatus
 
@@ -335,7 +361,7 @@ def get_mt_from_th1(histogram, name=None):
 
 class ROOTObjectKeeper:
     """
-    Keeps ROOT objects in it so ROOT doesn't garbage clean them.
+    Keeps ROOT objects in it so ROOT doesn't garbage collect them.
     """
     def __init__(self):
         self.objects = {}
@@ -540,9 +566,6 @@ def fit_pdf_to_datahist(pdf, data_hist, init_vals=None, init_ranges=None):
                 .format(par.GetName(), par.GetTitle(), par.getMin(), par.getMax())
                 )
 
-    print '><' * 40
-    print pdf.parameters[0].GetName(), data_hist.mt.GetName()
-
     try:
         res = pdf.fitTo(
             data_hist,
@@ -618,10 +641,6 @@ def plot_pdf_for_various_fitresults(pdf, fit_results, data_obs, outfile='test.pd
     base_pdf = pdf
     for i, res in enumerate(fit_results):
         pdf = rebuild_rpsbp(base_pdf)
-
-        print '>'*80
-        print mt.GetName(), pdf.parameters[0].GetName(), data_obs.mt.GetName()
-
         vals = set_pdf_to_fitresult(pdf, res)
         logger.info(
             'i=%s; Manual chi2=%.5f, chi2_via_frame=%.5f',
@@ -997,8 +1016,7 @@ def make_multipdf(pdfs, name='roomultipdf'):
     multipdf.cat = cat
     multipdf.pdfs = pdfs
     norm = ROOT.RooRealVar(name+'_norm', "Number of background events", 1.0, 0., 1.e6)
-    object_keeper.add(multipdf)
-    object_keeper.add(norm)
+    object_keeper.add_multiple([cat, norm, multipdf])
     return multipdf, norm
 
 def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=None):
@@ -1015,18 +1033,18 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
     # Bkg pdf: May be multiple
     is_multipdf = hasattr(bkg_pdf, '__len__')
     if is_multipdf:
-        # Multipdf
         multipdf, norm = make_multipdf(bkg_pdf)
-        for pdf in multipdf.pdfs:
-            commit(pdf)
         commit(multipdf.cat)
         commit(norm)
         commit(multipdf)
+        for pdf in multipdf.pdfs:
+            commit(pdf, pdf.GetName()) # It completely breaks if pdf.GetName() is not added. Why??
     else:
         commit(bkg_pdf, ROOT.RooFit.RenameVariable(bkg_pdf.GetName(), 'bkg'))
 
     commit(data_obs)
-    commit(sig, ROOT.RooFit.RenameVariable(sig.GetName(), 'sig'))
+    # commit(sig, ROOT.RooFit.RenameVariable(sig.GetName(), 'sig'))  # <-- Only for RooRealVars
+    commit(sig, ROOT.RooFit.Rename('sig'))
 
     wsfile = outfile.replace('.txt', '.root')
     dump_ws_to_file(wsfile, w)
@@ -1057,7 +1075,7 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
         f.write(txt)
 
 
-def th1_binning_and_values(h):
+def th1_binning_and_values(h, return_errs=False):
     """
     Returns the binning and values of the histogram.
     Does not include the overflows.
@@ -1066,10 +1084,224 @@ def th1_binning_and_values(h):
     # GetBinLowEdge of the right overflow bin is the high edge of the actual last bin
     binning = np.array([h.GetBinLowEdge(i) for i in range(1,n_bins+2)])
     values = np.array([h.GetBinContent(i) for i in range(1,n_bins+1)])
-    return binning, values
+    errs = np.array([h.GetBinError(i) for i in range(1,n_bins+1)])
+    return (binning, values, errs) if return_errs else (binning, values)
 
 def th1_to_datahist(histogram, mt=None):
     if mt is None: mt = get_mt_from_th1(histogram)
     datahist = ROOT.RooDataHist(uid(), '', ROOT.RooArgList(mt), histogram, 1.)
     datahist.mt = mt
     return datahist
+
+
+
+def camel_to_snake(name):
+    name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+    return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
+
+class CombineCommand:
+
+    comma_separated_args = [
+        '--freezeParameters',
+        '--trackParameters',
+        '--trackErrors',
+        ]
+    comma_separated_arg_map = { camel_to_snake(v.strip('-')) : v for v in comma_separated_args }
+    comma_separated_arg_map['redefine_signal_pois'] = '--redefineSignalPOIs'
+
+    def __init__(self, dc=None, method='MultiDimFit', args=None, kwargs=None):
+        self.dc = dc
+        self.method = method
+        self.args = set() if args is None else args
+        self.kwargs = {} if kwargs is None else kwargs
+        for key in self.comma_separated_arg_map: setattr(self, key, [])
+        self.parameters = {}
+        self.parameter_ranges = {}
+
+    @property
+    def name(self):
+        if '-n' in self.kwargs:
+            return self.kwargs['-n']
+        elif '--name' in self.kwargs:
+            return self.kwargs['--name']
+        else:
+            return 'Test'
+
+    @property
+    def outfile(self):
+        return 'higgsCombine{0}.{1}.mH120.root'.format(self.name, self.method)
+
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def __repr__(self):
+        return '<CombineCommand ' + '\n    '.join(self.parse()) + '\n    >'
+
+    @property
+    def str(self):
+        return ' '.join(self.parse())
+
+    def add_range(self, name, left, right):
+        self.parameter_ranges[name] = [left, right]
+
+    def set_parameter(self, name, value, left=None, right=None):
+        self.parameters[name] = value
+        if left is not None and right is not None: self.add_range(name, left, right)
+
+    def parse(self):
+        """
+        Returns the command as a list
+        """
+        command = ['combine']
+        command.append('-M ' + self.method)
+        if not self.dc: raise Exception('self.dc must be a valid path')
+        command.append(self.dc)
+        command.extend(list(self.args))
+        command.extend([k+' '+str(v) for k, v in self.kwargs.items()])
+
+        for attr, command_str in self.comma_separated_arg_map.items():
+            values = getattr(self, attr)
+            if not values: continue
+            command.append(command_str + ' ' + ','.join(values))
+        
+        if self.parameters:
+            strs = ['{0}={1}'.format(k, v) for k, v in self.parameters.items()]
+            command.append('--setParameters ' + ','.join(strs))
+
+        if self.parameter_ranges:
+            strs = ['{0}={1},{2}'.format(parname, *ranges) for parname, ranges in self.parameter_ranges.items()]
+            command.append('--setParameterRanges ' + ':'.join(strs))
+
+        return command
+
+
+@contextmanager
+def switchdir(other_dir):
+    if other_dir:
+        try:
+            current_dir = os.getcwd()
+            logger.info('Changing into %s', other_dir)
+            os.chdir(other_dir)
+            yield other_dir
+        finally:
+            logger.info('Changing back into %s', current_dir)
+            os.chdir(current_dir)
+    else:
+        try:
+            yield None
+        finally:
+            pass
+
+
+def run_command(cmd, chdir=None):
+    with switchdir(chdir):
+        logger.warning('Issuing command: ' + cmd)
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True,
+            shell=True,
+            )
+        output = []
+        for stdout_line in iter(process.stdout.readline, ""):
+            subprocess_logger.info(stdout_line.rstrip("\n"))
+            output.append(stdout_line)
+        process.stdout.close()
+        process.wait()
+        returncode = process.returncode
+
+        if returncode == 0:
+            logger.info("Command exited with status 0 - all good")
+        else:
+            logger.error("Exit status {0} for command: {1}".format(returncode, cmd))
+            raise subprocess.CalledProcessError(cmd, returncode)
+        return output
+
+def run_combine_command(cmd, chdir=None):
+    if chdir:
+        # Fix datacard to be an absolute path first
+        cmd = cmd.copy()
+        cmd.dc = osp.abspath(cmd.dc)
+    logger.info('Running {0}'.format(cmd))
+    return run_command(cmd.str, chdir)
+
+
+def get_arrays(rootfile, treename='limit'):
+    """Poor man's uproot: make a dict `branch_name : np.array of values`"""
+    with open_root(rootfile) as f:
+        tree = f.Get(treename)
+        branch_names = [ b.GetName() for b in tree.GetListOfBranches() ]
+        r = { b : [] for b in branch_names }
+        for entry in tree:
+            for b in branch_names:
+                r[b].append(getattr(entry, b))
+    return {k : np.array(v) for k, v in r.items()}
+
+    
+def test_combine_command():
+    cmd = CombineCommand('bla.txt')
+    cmd.aaa = 5
+    print(cmd.aaa)
+    cmd.kwargs['--test'] = .1
+    cmd.kwargs['--test2'] = 'NO'
+    cmd.args.add('--saveNLL')
+    print(cmd.freeze_parameters)
+    cmd.freeze_parameters.append('x')
+    print(cmd.freeze_parameters)
+
+    # cmd.add_range('x', .4, 1.6)
+    # cmd.add_range('x', .4, 2.6)
+    # cmd.add_range('y', 100, 101)
+
+    # cmd.set_parameter('x', 1.)
+    # cmd.set_parameter('y', 2.)
+
+    print(cmd.parameters)
+
+    print(cmd)
+    print(cmd.str)
+    return cmd
+
+
+# _______________________________________________________
+# RooFit interface
+
+def binning_from_roorealvar(x):
+    binning = [x.getMin()]
+    for i in range(x.numBins()):
+        binning.append(binning[-1] + x.getBinWidth(i))
+    return np.array(binning)
+
+
+def roodataset_values(data, varname='mt'):
+    """
+    Works on both RooDataHist and RooDataSet!
+    """
+    x = []
+    y = []
+    for i in range(data.numEntries()):
+        s = data.get(i)
+        x.append(s[varname].getVal())
+        y.append(data.weight())
+    return np.array(x), np.array(y)
+
+
+def pdf_values(pdf, x_vals, varname='mt'):
+    """
+    Equivalent to the y_values of pdf.createHistogram('...', mt)
+    """
+    variable = pdf.getVariables()[varname]
+    y = []
+    for x in x_vals:
+        variable.setVal(x)
+        y.append(pdf.getVal())
+    y = np.array(y)
+    return y / (y.sum() if y.sum()!=0. else 1.)
+
+# _______________________________________________________
+
+
+
+if __name__ == '__main__':
+    cmd = test_combine_command()
