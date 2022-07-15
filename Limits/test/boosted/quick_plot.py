@@ -7,7 +7,7 @@ from time import strftime
 import argparse
 
 # Add the directory of this file to the path so the boosted tools can be imported
-import sys, os, os.path as osp, pprint
+import sys, os, os.path as osp, pprint, re, traceback
 sys.path.append(osp.dirname(osp.abspath(__file__)))
 import boosted_fits as bsvj
 logger = bsvj.setup_logger('quickplot')
@@ -38,6 +38,18 @@ def cmd_exists(executable):
     """
     return any(os.access(os.path.join(path, executable), os.X_OK) for path in os.environ["PATH"].split(os.pathsep))
 
+def name_from_combine_rootfile(rootfile):
+    return osp.basename(rootfile).split('.',1)[0].replace('higgsCombine','')
+
+def quickplot_parser(outfile='test.png'):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-o', '--outfile', type=str, default=outfile)
+    parser.add_argument('-b', '--batch', action='store_true')
+    return parser
+
+def namespace_to_attrdict(args):
+    return bsvj.AttrDict(**vars(args))
+
 
 def extract_scan(rootfile, correct_minimum=False):
     with bsvj.open_root(rootfile) as tf:
@@ -65,7 +77,7 @@ def extract_scan(rootfile, correct_minimum=False):
 
 @is_script
 def muscan(args):
-    parser = argparse.ArgumentParser()
+    parser = quickplot_parser('muscan.png')
     parser.add_argument('rootfiles', type=str, nargs='+')
     parser.add_argument('--xmin', type=float)
     parser.add_argument('--xmax', type=float)
@@ -83,7 +95,7 @@ def muscan(args):
         mus, deltanlls = extract_scan(rootfile, args.correctminimum)
         min_mu = min(min_mu, np.min(mus))
         max_mu = max(max_mu, np.max(mus))
-        ax.plot(mus, deltanlls, '-o', label=osp.basename(rootfile).split('.',1)[0].replace('higgsCombine',''))
+        ax.plot(mus, deltanlls, '-o', label=name_from_combine_rootfile(rootfile))
 
     ax.plot([min_mu, max_mu], [.0, .0], color='lightgray')
     ax.plot([min_mu, max_mu], [.5, .5], label='$1\sigma$')
@@ -97,19 +109,18 @@ def muscan(args):
     if args.ymin: ax.set_ylim(bottom=args.ymin)
     ax.legend()
 
-    # plt.show()
-    plt.savefig('muscan.png', bbox_inches='tight')
-    if cmd_exists('imgcat'): os.system('imgcat muscan.png')
-
+    plt.savefig(args.outfile, bbox_inches='tight')
+    if not(args.batch) and cmd_exists('imgcat'): os.system('imgcat ' + args.outfile)
 
 
 
 @is_script
-def plot_mt_distribution_mpl(args):
+def mtdist(args):
     from scipy.interpolate import make_interp_spline
-    parser = argparse.ArgumentParser()
-    parser.add_argument('rootfile', type=str)
-    args = parser.parse_args(args)
+    if not isinstance(args, bsvj.AttrDict):
+        parser = quickplot_parser('mtdist.png')
+        parser.add_argument('rootfile', type=str)
+        args = parser.parse_args(args)
 
     with bsvj.open_root(args.rootfile) as f:
         ws = bsvj.get_ws(f)
@@ -141,10 +152,10 @@ def plot_mt_distribution_mpl(args):
         .format(y_data.sum(), y_sig.sum())
         )
 
-    fig = plt.figure(figsize=(8,8))
+    fig = plt.figure(figsize=(10,10))
     ax = fig.gca()
 
-    ax.plot([], [], ' ', label=r'$m_{Z\prime}=450$ GeV')
+    ax.plot([], [], ' ', label=name_from_combine_rootfile(args.rootfile))
 
     ax.errorbar(
         mt_bin_centers, y_data,
@@ -169,53 +180,9 @@ def plot_mt_distribution_mpl(args):
     ax.set_ylabel('$N_{events}$')
     ax.set_xlabel(r'$m_{T}$ (GeV)')
     ax.set_yscale('log')
-    plt.savefig('mtdist.png', bbox_inches='tight')
-    if cmd_exists('imgcat'): os.system('imgcat mtdist.png')
 
-
-
-@is_script
-def plot_mt_distribution(args):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('rootfile', type=str)
-    args = parser.parse_args(args)
-
-    with bsvj.open_root(args.rootfile) as f:
-        ws = bsvj.get_ws(f)
-    
-    ws.loadSnapshot('MultiDimFit')
-
-    mt = ws.var('mt')
-    data = ws.data('data_obs')
-    bkg = ws.pdf('shapeBkg_roomultipdf_bsvj')
-    sig = ws.pdf('shapeSig_sig_bsvjPdf')
-
-    xframe = mt.frame(ROOT.RooFit.Title('some title'))
-    c = ROOT.TCanvas(bsvj.uid(), '', 1000, 800)
-    c.cd()
-
-    data.plotOn(xframe, ROOT.RooFit.Name("data"), ROOT.RooFit.DataError(0), ROOT.RooFit.Name('data'))
-    bkg.plotOn(xframe, ROOT.RooFit.Name('bkg'))
-    sig.plotOn(xframe, ROOT.RooFit.LineColor(2), ROOT.RooFit.Name('sig'))
-
-    xframe.SetMinimum(100.)
-    xframe.Draw()
-    c.SetLogy()
-
-    # data_hist = ROOT.RooDataSet(bsvj.uid(), 'title', ROOT.RooArgSet(mt), data)
-    # data_th1 = data_hist.createHistogram(bsvj.uid(), mt)
-
-    # Legend
-    leg = ROOT.TLegend(0.65,0.73,0.86,0.87)
-    leg.SetFillColor(ROOT.kWhite)
-    leg.SetLineColor(ROOT.kWhite)
-    leg.AddEntry('data','Data', 'P')
-    leg.AddEntry('bkg','Background','LP')
-    leg.AddEntry('sig','Signal', 'LP')
-    leg.Draw()
-
-    c.SaveAs('test.png')
-    if cmd_exists('imgcat'): os.system('imgcat test.png')
+    plt.savefig(args.outfile, bbox_inches='tight')
+    if not(args.batch) and cmd_exists('imgcat'): os.system('imgcat ' + args.outfile)
 
 
 
@@ -300,9 +267,17 @@ def get_cls(obs_arrays, asimov_arrays):
 def interpolate_95cl_limit(cls):
     mu = cls.obs.mu
     def interpolate(cl):
-        select = (cl < .15)
+        # print('Interpolating')
+        select = ((cl < .15) & (cl > .01) & (mu>0))
+        # print('  {} values left'.format(select.sum()))
         order = np.argsort(cl[select])
-        return np.interp(.05, cl[select][order], mu[select][order])
+        # print('  {:14s}  {:14s}'.format('cl', 'mu'))
+        # for c, m in zip(cl[select][order], mu[select][order]):
+        #     print('  {:+14.7f}  {:+14.7f}'.format(c, m))
+        res = np.interp(.05, cl[select][order], mu[select][order])
+        # print('Interpolation result: cl=0.05, mu={}'.format(res))
+        return res
+
     d = bsvj.AttrDict()
     d['twosigma_down'] = interpolate(cls.s_exp[0.975])
     d['onesigma_down'] = interpolate(cls.s_exp[0.84])
@@ -318,10 +293,11 @@ def safe_divide(a, b):
 
 @is_script
 def cls(args):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('observed', type=str)
-    parser.add_argument('asimov', type=str)
-    args = parser.parse_args(args)
+    if not isinstance(args, bsvj.AttrDict):
+        parser = quickplot_parser('cls.png')
+        parser.add_argument('observed', type=str)
+        parser.add_argument('asimov', type=str)
+        args = parser.parse_args(args)
 
     obs = bsvj.get_arrays(args.observed)
     asimov = bsvj.get_arrays(args.asimov)
@@ -329,7 +305,7 @@ def cls(args):
     cls = get_cls(obs, asimov)
     limit = interpolate_95cl_limit(cls)
 
-    fig = plt.figure(figsize=(10,10))
+    fig = plt.figure(figsize=(14,14))
     ax = fig.gca()
 
     mu = cls.obs.mu
@@ -357,8 +333,131 @@ def cls(args):
     ax.set_xlabel(r'$\mu$')
     ax.set_ylabel('CL')
 
-    plt.savefig('cls.png', bbox_inches='tight')
-    if cmd_exists('imgcat'): os.system('imgcat cls.png')
+    plt.savefig(args.outfile, bbox_inches='tight')
+    if not(args.batch) and cmd_exists('imgcat'): os.system('imgcat ' + args.outfile)
+
+
+@is_script
+def brazil(args):
+    if not isinstance(args, bsvj.AttrDict):
+        parser = quickplot_parser('brazil.png')
+        parser.add_argument('rootfiles', type=str, nargs='+')
+        parser.add_argument('--xmin', type=float)
+        parser.add_argument('--xmax', type=float)
+        parser.add_argument('--ymin', type=float)
+        parser.add_argument('--ymax', type=float)
+        args = parser.parse_args(args)
+    rootfiles = args.rootfiles
+
+    get_mz = lambda rootfile: int(re.search(r'mz(\d+)', osp.basename(rootfile)).group(1))
+    rootfiles.sort(key=get_mz)
+    obs_rootfiles = [f for f in args.rootfiles if 'Observed' in osp.basename(f)]
+    asimov_rootfiles = [f for f in args.rootfiles if 'Asimov' in osp.basename(f)]
+
+    assert [get_mz(f) for f in obs_rootfiles] == [get_mz(f) for f in asimov_rootfiles]
+
+    points = []
+    for obs_rootfile, asimov_rootfile in zip(obs_rootfiles, asimov_rootfiles):
+        mz = get_mz(obs_rootfile)
+        assert mz == get_mz(asimov_rootfile)
+        obs = bsvj.get_arrays(obs_rootfile)
+        asimov = bsvj.get_arrays(asimov_rootfile)
+        try:
+            cls = get_cls(obs, asimov)
+            limit = interpolate_95cl_limit(cls)
+            points.append(bsvj.AttrDict(
+                mz = mz,
+                limit = limit,
+                cls = cls
+                ))
+        except Exception:
+            bsvj.logger.error('Error for mz {}:'.format(mz))
+            traceback.print_exc()
+
+    print(
+        '{:<5s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s} | {:>8s}'
+        .format(
+            'mz',
+            '2s down',
+            '1s down',
+            'exp',
+            '1s up',
+            '2s up',
+            'obs'
+            )
+        )
+    for p in points:
+        print(
+            '{:<5.0f} {:+8.3f} {:+8.3f} {:+8.3f} {:+8.3f} {:+8.3f} | {:+8.3f}'
+            .format(
+                p.mz,
+                p.limit.twosigma_down,
+                p.limit.onesigma_down,
+                p.limit.expected,
+                p.limit.onesigma_up,
+                p.limit.twosigma_up,
+                p.limit.observed
+                )
+            )
+
+    fig = plt.figure(figsize=(12,10))
+    ax = fig.gca()
+    
+    mzs = [p.mz for p in points]
+
+    ax.fill_between(
+        mzs,
+        [p.limit.twosigma_down for p in points],
+        [p.limit.twosigma_up for p in points],
+        color="yellow"
+        )
+    ax.fill_between(
+        mzs,
+        [p.limit.onesigma_down for p in points],
+        [p.limit.onesigma_up for p in points],
+        color="green"
+        )    
+    ax.plot(mzs, [p.limit.expected for p in points], c='black', linestyle='--', label='Exp')
+    ax.plot(mzs, [p.limit.observed for p in points], c='black', linestyle='-', label='Obs')
+
+    ax.set_xlabel(r'$m_{Z\prime}$ (GeV)')
+    ax.set_ylabel(r'$\mu$')
+    if hasattr(args, 'xmax') and args.xmax: ax.set_xlim(right=args.xmax)
+    if hasattr(args, 'xmin') and args.xmin: ax.set_xlim(left=args.xmin)
+    if hasattr(args, 'ymax') and args.ymax: ax.set_ylim(top=args.ymax)
+    if hasattr(args, 'ymin') and args.ymin: ax.set_ylim(bottom=args.ymin)
+    ax.legend()
+
+
+    plt.savefig(args.outfile, bbox_inches='tight')
+    if not(args.batch) and cmd_exists('imgcat'): os.system('imgcat ' + args.outfile)
+
+
+
+@is_script
+def allplots(args):
+    if not isinstance(args, bsvj.AttrDict):
+        parser = quickplot_parser()
+        parser.add_argument('rootfiles', type=str, nargs='+')
+        args = parser.parse_args(args)
+
+    outdir = strftime('plots_%b%d')
+    if not osp.isdir(outdir): os.makedirs(outdir)
+
+    d = namespace_to_attrdict(args)
+    d.batch = True
+
+    for rootfile in args.rootfiles:
+        mtdist(bsvj.AttrDict(
+            d,
+            rootfile=rootfile,
+            outfile=osp.join(outdir, 'mtdist_{}.png'.format(name_from_combine_rootfile(rootfile)))
+            ))
+
+    brazil(bsvj.AttrDict(d, outfile=osp.join(outdir, 'brazil.png')))
+
+
+
 
 
 

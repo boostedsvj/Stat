@@ -2,9 +2,10 @@
 Scripts using building blocks in boosted_fits.py to create datacards
 """
 
-import argparse, inspect, os, os.path as osp
+import argparse, inspect, os, os.path as osp, re, json
+from pprint import pprint
 from boosted_fits import *
-from time import strftime
+from time import strftime, sleep
 from copy import copy
 
 import ROOT
@@ -18,15 +19,6 @@ def is_script(fn):
 # _______________________________________________________________________
 
 
-
-def fit_scipy(pdf_type, npars, histogram):
-    return fit_expr_to_histogram_robust(pdf_expression(pdf_type, npars), histogram)
-
-def fit_roofit(pdf_type, npars, histogram, init_vals=None):
-    mt = get_mt_from_th1(histogram)
-    pdf = make_pdf(pdf_type, npars, histogram, mt, name=uid())
-    data_obs = th1_to_datahist(histogram, mt)
-    return fit_pdf_to_datahist(pdf, data_obs, init_vals=init_vals)
 
 
 @is_script
@@ -161,86 +153,120 @@ def this_fn_name():
     return inspect.stack()[1][3]
 
 
+def construct_th1_from_hist(name, hist):
+    binning = hist['binning']
+    n_bins = len(binning)-1
+    th1 = ROOT.TH1F(name, name, n_bins, array('f', binning))
+    ROOT.SetOwnership(th1, False)
+    vals = hist['vals']
+    errs = hist['errs']
+    assert len(vals) == n_bins
+    assert len(errs) == n_bins
+    for i in range(n_bins):
+        th1.SetBinContent(i+1, vals[i])
+        th1.SetBinError(i+1, errs[i])
+    return th1
+
+
+def hist_cut_left(hist, i_bin_min):
+    """
+    Returns a new hist with i_bin_min as bin 0, and any preceeding bin
+    thrown out
+    """
+    if i_bin_min == 0: return hist
+    histcopy = copy(hist)
+    for key in ['binning', 'vals', 'errs']:
+        histcopy[key] = histcopy[key][i_bin_min:]
+    return histcopy
+
+
+class InputData(object):
+    def __init__(self, jsonfile):
+        self.i_bin_min = 0
+        with open(jsonfile, 'r') as f:
+            self.d = json.load(f)
+
+    def cut_mt_left(self, min_mt):
+        self.i_bin_min = np.argmax(self.mt_array >= min_mt)
+        self.mt = self.mt[self.i_bin_min:]
+        logger.info('Cutting histograms mt>{}, which is bin {}'.format(min_mt, self.i_bin_min))
+
+    @property
+    def mt(self):
+        return self.d['mt']
+
+    @mt.setter
+    def mt(self, val):
+        self.d['mt'] = val
+
+    @property
+    def mt_array(self):
+        return np.array(self.mt)
+
+    @property
+    def n_bins(self):
+        return len(self.mt)-1
+
+    def bkghist(self, bdt):
+        return hist_cut_left(self.d['histograms']['{:.1f}/bkg'.format(bdt)], self.i_bin_min)
+
+    def sighist(self, bdt, mz):
+        return hist_cut_left(self.d['histograms']['{:.1f}/mz{:.0f}'.format(bdt, mz)], self.i_bin_min)
+
+
 @is_script
-def gen_datacard_ul():
+def gen_datacard_ul(args=None):
     """
     Generate datacards for UL
     """
-    parser = argparse.ArgumentParser(this_fn_name())
-    parser.add_argument('jsonfile', type=str)
-    parser.add_argument('-b', '--bdtcut', type=float, default=.1)
-    parser.add_argument('-i', '--injectsignal', action='store_true')
-    args = parser.parse_args()
+    if args is None:
+        parser = argparse.ArgumentParser(this_fn_name())
+        parser.add_argument('jsonfile', type=str)
+        parser.add_argument('-b', '--bdtcut', type=float, default=.1)
+        parser.add_argument('-m', '--mz', type=int, default=450)
+        parser.add_argument('-i', '--injectsignal', action='store_true')
+        args = parser.parse_args()
+
+    input = InputData(args.jsonfile)
+    input.cut_mt_left(300.)
+
     bdt_str = '{:.1f}'.format(args.bdtcut).replace('.', 'p')
+    mt = get_mt(input.mt[0], input.mt[-1], input.n_bins, name='mt')
+    bkg_th1 = construct_th1_from_hist('bkg', input.bkghist(args.bdtcut))
 
-    import json
-    with open(args.jsonfile, 'r') as f:
-        d = json.load(f)
-
-    mt_binning = d['mt']
-
-    # Cut off left part of mt distr: Find first bin >300 GeV
-    for i in range(len(mt_binning)-1):
-        if mt_binning[i] >= 300.:
-            i_bin_min = i
-            break
-    else:
-        raise Exception()
-
-    logger.info('Starting mt from {}'.format(mt_binning[i_bin_min]))
-    mt_binning = mt_binning[i_bin_min:]
-    n_bins = len(mt_binning)-1
-    mt = get_mt(mt_binning[0], mt_binning[-1], n_bins, name='mt')
-
-    def construct_th1_from_hist(name, hist):
-        th1 = ROOT.TH1F(name, name, n_bins, array('f', mt_binning))
-        ROOT.SetOwnership(th1, False)
-        vals = hist['vals'][i_bin_min:]
-        errs = hist['errs'][i_bin_min:]
-        assert len(vals) == n_bins
-        assert len(errs) == n_bins
-        for i in range(n_bins):
-            th1.SetBinContent(i+1, vals[i])
-            th1.SetBinError(i+1, errs[i])
-        return th1
-
-    # Construct the bkg TH1
-    bkg_hist = d['histograms']['{:.1f}/bkg'.format(args.bdtcut)]
-    bkg_th1 = construct_th1_from_hist('bkg', bkg_hist)
-
-    # data RooDataHist: just the bkg now
     data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1, 1.)
-
-    def fit(pdf):
-        res_scipy = fit_scipy(pdf.pdftype, pdf.npars, bkg_th1)
-        res_roofit_wscipy = fit_roofit(pdf.pdftype, pdf.npars, bkg_th1, init_vals=res_scipy.x)
-        return res_roofit_wscipy
 
     winner_pdfs = []
     for pdf_type in ['main', 'alt']:
-        pdfs = get_pdfs(pdf_type, bkg_th1, mt)
+        pdfs = pdfs_factory(pdf_type, mt, bkg_th1, name='bsvj_bkgfit{}_npars'.format(pdf_type))
         ress = [ fit(pdf) for pdf in pdfs ]
         i_winner = do_fisher_test(mt, data_datahist, pdfs)
         winner_pdfs.append(pdfs[i_winner])
-        plot_fits(pdfs, ress, data_datahist, pdf_type + '.pdf')
+        # plot_fits(pdfs, ress, data_datahist, pdf_type + '.pdf')
 
-    systs = [['lumi', 'lnN', 1.026, '-']]
+    systs = [
+        ['lumi', 'lnN', 1.016, '-'],
+        # Place holders
+        ['trigger', 'lnN', 1.02, '-'],
+        ['pdf', 'lnN', 1.05, '-'],
+        ['mcstat', 'lnN', 1.07, '-'],
+        ]
 
-    for mz in [450]:
-        sig_name = 'mz{}'.format(mz)
-        sig_hist = d['histograms']['{:.1f}/{}'.format(args.bdtcut, sig_name)]
-        sig_th1 = construct_th1_from_hist(sig_name, sig_hist)
-        sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
+    sig_name = 'mz{:.0f}'.format(args.mz)
+    # sig_hist = hist_cut_left(d['histograms']['{:.1f}/{}'.format(args.bdtcut, sig_name)], i_bin_min)
+    # sig_th1 = construct_th1_from_hist(sig_name, sig_hist)
+    sig_th1 = construct_th1_from_hist(sig_name, input.sighist(args.bdtcut, args.mz))
+    sig_datahist = ROOT.RooDataHist(sig_name, sig_name, ROOT.RooArgList(mt), sig_th1, 1.)
 
-        if args.injectsignal:
-            logger.info('Injecting signal in data_obs')
-            data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1+sig_th1, 1.)
+    if args.injectsignal:
+        logger.info('Injecting signal in data_obs')
+        data_datahist = ROOT.RooDataHist("data_obs", "Data", ROOT.RooArgList(mt), bkg_th1+sig_th1, 1.)
 
-        compile_datacard_macro(
-            winner_pdfs, data_datahist, sig_datahist,
-            strftime('dc_%b%d/dc_mz{}_bdt{}.txt'.format(mz, bdt_str)),
-            systs=systs
-            )
+    compile_datacard_macro(
+        winner_pdfs, data_datahist, sig_datahist,
+        strftime('dc_%b%d/dc_mz{}_bdt{}.txt'.format(args.mz, bdt_str)),
+        systs=systs
+        )
 
 
 @is_script
@@ -308,41 +334,54 @@ def likelihood_scan():
     parser.add_argument('-r', '--range', type=float, default=[-.7, .7], nargs=2)
     parser.add_argument('-v', '--verbosity', type=int, default=0)
     args = parser.parse_args()
-
-    cmd = CombineCommand(args.datacard, 'MultiDimFit')
-
-    cmd.redefine_signal_pois.append('r')
-    if args.injectsignal: cmd.kwargs['--expectSignal'] = 1
-    cmd.add_range('r', args.range[0], args.range[1])
-    cmd.track_parameters.extend(['r'])
-
-    cmd.args.add('--saveWorkspace')
-    cmd.args.add('--saveNLL')
-    cmd.kwargs['--algo'] = 'grid'
-    cmd.kwargs['--points'] = args.npoints
-    cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
-    cmd.kwargs['--alignEdges'] = 1
-    cmd.kwargs['-v'] = args.verbosity
-
-    if args.asimov:
-        cmd.kwargs['-t'] = '-1'
-        cmd.args.add('--toysFreq')
-        cmd.kwargs['-n'] = 'Asimov'
-    else:
-        cmd.kwargs['-n'] = 'Observed'
-
+    cmd = likelihood_scan_factory(
+        args.datacard, args.range[0], args.range[1], args.npoints,
+        args.verbosity, args.asimov
+        )
     if args.injectsignal: cmd.kwargs['-n'] += 'InjectedSig'
-
-    cmd.set_parameter('pdf_index', 1)
-    cmd.freeze_parameters.extend([
-        'pdf_index',
-        # r'rgx{bsvj_bkgfitmain_npars.*}'
-        'bsvj_bkgfitmain_npars4_p1', 'bsvj_bkgfitmain_npars4_p2', 'bsvj_bkgfitmain_npars4_p3',
-        'bsvj_bkgfitmain_npars4_p4',
-        # 'bsvj_bkgfitalt_npars3_p1', 'bsvj_bkgfitalt_npars3_p2', 'bsvj_bkgfitalt_npars3_p3'
-        ])
-
     run_combine_command(cmd, args.chdir)
+
+
+def likelihood_scan_multiple_worker(input):
+    """
+    Worker function for likelihood_scan_multiple multiprocessing
+    """
+    datacard, args = input
+    cmd = likelihood_scan_factory(
+        datacard, args.range[0], args.range[1], args.npoints,
+        args.verbosity, args.asimov
+        )
+    cmd.name = cmd.name + '_' + osp.basename(datacard).replace('.txt', '')
+    output = run_combine_command(cmd)
+    # Stageout
+    output_file = osp.join(args.outdir, cmd.outfile.replace('.root','') + '.out')
+    with open(output_file, 'w') as f:
+        f.write(''.join(output))
+    if osp.isfile(cmd.outfile): os.rename(cmd.outfile, osp.join(args.outdir, cmd.outfile))
+    logger.info('Finished scan for %s', datacard)
+
+@is_script
+def likelihood_scan_multiple():
+    parser = argparse.ArgumentParser(inspect.stack()[0][3])
+    parser.add_argument('datacards', type=str, nargs='+')
+    parser.add_argument('-c', '--chdir', type=str, default=None)
+    parser.add_argument('-a', '--asimov', action='store_true')
+    parser.add_argument('-v', '--verbosity', type=int, default=0)
+    parser.add_argument('-n', '--npoints', type=int, default=401)
+    parser.add_argument('-r', '--range', type=float, default=[-1., 10.], nargs=2)
+    parser.add_argument('-o', '--outdir', type=str, default=strftime('scans_%b%d'))
+    args = parser.parse_args()
+
+    if not osp.isdir(args.outdir): os.makedirs(args.outdir)
+
+    data = [ (d, args) for d in args.datacards ]
+
+    import multiprocessing
+    p = multiprocessing.Pool(10)
+    p.map(likelihood_scan_multiple_worker, data)
+    p.close()
+    p.join()
+    logger.info('Finished pool')
 
 
 @is_script
@@ -417,7 +456,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('script', type=str, choices=list(_scripts.keys()))
     parser.add_argument('-v', '--verbose', action='store_true')
-    args, other_args = parser.parse_known_args()
+    global_args, other_args = parser.parse_known_args()
     sys.argv = [sys.argv[0]] + other_args
-    if args.verbose: debug()
-    r = _scripts[args.script]()
+    if global_args.verbose: debug()
+    r = _scripts[global_args.script]()

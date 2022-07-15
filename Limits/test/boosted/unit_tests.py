@@ -1,7 +1,10 @@
+from __future__ import print_function
+from pprint import pprint
 import ROOT
 import boosted_fits as bsvj
 import numpy as np
 import inspect
+from collections import OrderedDict
 
 TEST_ROOTFILE = 'example_fit_result.root'
 
@@ -10,6 +13,8 @@ def get_ws(rootfile=None):
     with bsvj.open_root(rootfile) as f:
         return bsvj.get_ws(f)
 
+def finished_succesfully():
+    bsvj.logger.info(inspect.stack()[1][3] + ' finished succesfully')
 
 def test_roofit_get_y_values():
     # Values from text datacard used to create the example ws
@@ -60,7 +65,7 @@ def test_roofit_get_y_values():
     np.testing.assert_array_equal(mt_bin_centers, x_sig)
     assert abs(y_sig.sum() - n_expected_sig) <= 1.
 
-    bsvj.logger.info(inspect.stack()[0][3] + ' finished succesfully')
+    finished_succesfully()
 
 
 def test_eval_expression():
@@ -71,6 +76,7 @@ def test_eval_expression():
         np.array([4., 16.])
         )
     assert bsvj.add_normalization('@0*@1') == '@2*(@0*@1)'
+    finished_succesfully()
 
 
 def test_chi2():
@@ -112,6 +118,7 @@ def test_chi2():
         (chi2, raw_chi2, prob, ndf),
         t3-t2
         )
+    finished_succesfully()
 
     # ________________________________________________________
     # Extra test: Fit normalization manually to data again
@@ -154,9 +161,58 @@ def test_combine_command():
         ' --setParameterRanges x=0.4,1.6:y=100,101'
         )
 
+    assert cmd.name == ''
+    cmd.kwargs['-n'] = 'test'
+    assert cmd.get_name_key() == '-n'
+    assert cmd.name == 'test'
+    cmd.name += 'bla'
+    assert cmd.name == 'testbla'
+    cmd.kwargs['--name'] = cmd.kwargs['-n']
+    del cmd.kwargs['-n']
+    assert cmd.get_name_key() == '--name'
+    finished_succesfully()
+
+
+def test_datacard():
+    dc = bsvj.Datacard()
+    dc.shapes.append(['roomultipdf', 'bsvj', 'my_ws.root', 'SVJ:$PROCESS'])
+    dc.shapes.append(['sig', 'bsvj', 'my_ws.root', 'SVJ:$PROCESS', 'SVJ:$PROCESS_$SYSTEMATIC'])
+    dc.shapes.append(['data_obs', 'bsvj', 'my_ws.root', 'SVJ:$PROCESS'])
+    dc.channels.append(('bsvj', 100000))
+    dc.rates['bsvj'] = OrderedDict()
+    dc.rates['bsvj']['sig'] = 15000
+    dc.rates['bsvj']['roomultipdf'] = 120000
+    dc.systs.extend([
+        ['bsvj_bkgfitmain_npars2_p1', 'flatParam'],
+        ['bsvj_bkgfitmain_npars2_p2', 'flatParam'],
+        ['bsvj_bkgfitalt_npars1_p1',  'flatParam'],
+        ['pdf_index',                 'discrete'],
+        ['lumi', 'lnN', 1.02, '-']
+        ])
+    txt = bsvj.parse_dc(dc)
+
+    print(txt)
+    print('\n')
+
+    dc2 = bsvj.read_dc_txt(txt)
+    txt2 = bsvj.parse_dc(dc2)
+    
+    print(txt2)
+
+    assert dc.shapes == dc2.shapes
+    assert dc.channels == dc2.channels
+    assert dc.rates == dc2.rates
+    assert dc.systs == dc2.systs    
+    assert dc == dc2
+
+    assert dc2.syst_rgx('bsvj_bkgfitmain_*') == ['bsvj_bkgfitmain_npars2_p1', 'bsvj_bkgfitmain_npars2_p2']
+    finished_succesfully()
+
+    
 
 if __name__ == '__main__':
     # test_roofit_get_y_values()
     # test_eval_expression()
     # test_chi2()
     test_combine_command()
+    # test_datacard()

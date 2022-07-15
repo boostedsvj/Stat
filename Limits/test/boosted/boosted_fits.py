@@ -153,9 +153,9 @@ def build_chi2(expr, h):
     """
     Builds a chi2 function between a pdf (expression) and a histogram.
     """
-    binning, counts = th1_binning_and_values(h)
+    hist = th1_to_hist(h)
     # Use the bin centers as the mT array
-    mt_array = np.array(.5*(binning[:-1]+binning[1:]))
+    mt_array = np.array(.5*(hist.binning[:-1]+hist.binning[1:]))
     def chi2(parameters):
         # Construct the parameters of the expression:
         # [ @0 (mt), @1, ... @N (pdf parameters) ]
@@ -163,12 +163,9 @@ def build_chi2(expr, h):
         parameters.insert(0, mt_array)
         y_pdf = eval_expression(expr, parameters)
         # Normalize pdf to counts too before evaluating, so as the compare only shape
-        y_pdf = (y_pdf/y_pdf.sum()) * counts.sum()
-        return np.sum((counts-y_pdf)**2 / y_pdf)
+        y_pdf = (y_pdf/y_pdf.sum()) * hist.vals.sum()
+        return np.sum((hist.vals-y_pdf)**2 / y_pdf)
     return chi2
-
-
-FIT_CACHE_FILE = 'fit_cache.pickle'
 
 
 def _fit_hash(expression, histogram, init_vals=None, **minimize_kwargs):
@@ -210,6 +207,9 @@ def _fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=Non
     #     logger.error('Failed to set uncertainties; using found function values as proxies')
     #     res.dx = res.x.copy()
     return res
+
+
+FIT_CACHE_FILE = 'fit_cache.pickle'
 
 def _read_fit_cache():
     import pickle
@@ -319,6 +319,33 @@ def fit_pdf_expression_to_histogram_python(expression, histogram, init_vals=None
         return res
 
 
+
+def fit_scipy(pdf, th1=None):
+    """
+    Main bkg fit entry point for fitting pdf to bkg th1 with scipy
+    """
+    if th1 is None: th1 = pdf.th1
+    return fit_expr_to_histogram_robust(pdf_expression(pdf.pdf_type, pdf.npars), th1)
+
+def fit_roofit(pdf, th1=None, init_vals=None):
+    """
+    Main bkg fit entry point for fitting pdf to bkg th1 with RooFit
+    """
+    if th1 is None: th1 = pdf.th1
+    return fit_pdf_to_datahist(pdf, th1_to_datahist(th1, pdf.mt), init_vals=init_vals)
+
+def fit(pdf, th1=None):
+    """
+    Main bkg fit entry point for
+    - first fitting pdf expression to bkg th1 with scipy
+    - then using those initial values in RooFit
+    """
+    res_scipy = fit_scipy(pdf, th1)
+    res_roofit_wscipy = fit_roofit(pdf, th1, init_vals=res_scipy.x)
+    return res_roofit_wscipy
+
+
+
 def get_mt(mt_min=160., mt_max=500., n_bins=43, name='mHbsvj'):
     """
     Sensible defaults for the mt axis
@@ -347,6 +374,7 @@ def get_mt_from_th1(histogram, name=None):
     return mt
 
 
+
 def build_rpsbp(name, expression, mt, parameters, histogram):
     '''Builds a RooParametricShapeBinPdf'''
     logger.info(
@@ -363,10 +391,11 @@ def build_rpsbp(name, expression, mt, parameters, histogram):
         generic_pdf, mt, ROOT.RooArgList(*parameters), histogram
         )
     parametric_shape_bin_pdf.expression = expression # Tag it onto the instance
-    parametric_shape_bin_pdf.parameters = [mt] + parameters
+    parametric_shape_bin_pdf.parameters = parameters
     parametric_shape_bin_pdf.npars = len(parameters)
-    parametric_shape_bin_pdf.histogram = histogram
+    parametric_shape_bin_pdf.th1 = histogram
     parametric_shape_bin_pdf.pdftype = 'main' if 'main' in name else 'alt'
+    parametric_shape_bin_pdf.mt = mt
     object_keeper.add(parametric_shape_bin_pdf)
     logger.info(
         'Created RooParametricShapeBinPdf {} with {} parameters on histogram {}'
@@ -388,12 +417,14 @@ def rebuild_rpsbp(pdf):
         object_keeper.add(variable)
         return variable
     return build_rpsbp(
-        name, pdf.expression, pdf.parameters[0],
-        [remake_parameter(p) for p in pdf.parameters[1:]], pdf.histogram
+        name, pdf.expression, pdf.mt,
+        [remake_parameter(p) for p in pdf.parameters], pdf.th1
         )
 
 
 def pdf_expression(pdf_type, npars, mt_scale='1000'):
+    # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
+    # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
     if pdf_type == 'main':
         if npars == 2:
             expression = 'pow(1 - @0/{0}, @1) * pow(@0/{0}, -(@2))'
@@ -426,86 +457,77 @@ def pdf_expression(pdf_type, npars, mt_scale='1000'):
     return expression.format(mt_scale)
 
 
-def make_pdf(pdf_type, npars, bkg_hist, mt=None, name=None, mt_scale='1000', **kwargs):
-    if mt is None: mt = get_mt_from_th1(bkg_hist)
-    if pdf_type == 'alt':
-        return make_alt_pdf(npars, bkg_hist, mt, name=name, mt_scale=mt_scale, **kwargs)
-    elif pdf_type == 'main':
-        return make_main_pdf(npars, bkg_hist, mt, name=name, mt_scale=mt_scale, **kwargs)
-    else:
-        raise Exception('Unknown pdf type {0}'.format(pdf_type))
-
-
-def make_main_pdf(npars, bkg_hist, mt, name=None, mt_scale='1000'):
-    # Function from Theorists, combo testing, sequence E, 1, 11, 12, 22
-    # model NM has N params on 1-x and M params on x. exponents are (p_i + p_{i+1} * log(x))
-    pdf_name = 'bsvj_bkgfitmain_npars'+str(npars) if name is None else name
-    expression = pdf_expression('main', npars, mt_scale)
-    if npars == 2:
+def pdf_parameters(pdf_type, npars, prefix=None):
+    if prefix is None: prefix = uid()
+    if pdf_type == 'main':
+        if npars == 2:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -45., 45.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.)
+                ]
+        elif npars == 3:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -45., 45.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -10., 10.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -15, 15),
+                ]
+        elif npars == 4:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -95., 95.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -25., 20.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -2., 2.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -2., 2.),
+                ]
+        elif npars == 5:
+            parameters = [
+                ROOT.RooRealVar(prefix + "_p1", "p1", 1., -15., 15.),
+                ROOT.RooRealVar(prefix + "_p2", "p2", 1., -95., 95.),
+                ROOT.RooRealVar(prefix + "_p3", "p3", 1., -25., 25.),
+                ROOT.RooRealVar(prefix + "_p4", "p4", 1., -5., 5.),
+                ROOT.RooRealVar(prefix + "_p5", "p5", 1., -1.5, 1.5),
+                ]
+    elif pdf_type == 'alt':
+        par_lo = -50.
+        par_up = 50.
         parameters = [
-            ROOT.RooRealVar(pdf_name + "_p1", "p1", 1., -45., 45.),
-            ROOT.RooRealVar(pdf_name + "_p2", "p2", 1., -10., 10.)
+            ROOT.RooRealVar(prefix + '_p{0}'.format(i+1), '', 1., par_lo, par_up) \
+            for i in range(npars)
             ]
-    elif npars == 3:
-        parameters = [
-            ROOT.RooRealVar(pdf_name + "_p1", "p1", 1., -45., 45.),
-            ROOT.RooRealVar(pdf_name + "_p2", "p2", 1., -10., 10.),
-            ROOT.RooRealVar(pdf_name + "_p3", "p3", 1., -15, 15),
-            ]
-    elif npars == 4:
-        parameters = [
-            ROOT.RooRealVar(pdf_name + "_p1", "p1", 1., -95., 95.),
-            ROOT.RooRealVar(pdf_name + "_p2", "p2", 1., -25., 20.),
-            ROOT.RooRealVar(pdf_name + "_p3", "p3", 1., -2., 2.),
-            ROOT.RooRealVar(pdf_name + "_p4", "p4", 1., -2., 2.),
-            ]
-    elif npars == 5:
-        parameters = [
-            ROOT.RooRealVar(pdf_name + "_p1", "p1", 1., -15., 15.),
-            ROOT.RooRealVar(pdf_name + "_p2", "p2", 1., -95., 95.),
-            ROOT.RooRealVar(pdf_name + "_p3", "p3", 1., -25., 25.),
-            ROOT.RooRealVar(pdf_name + "_p4", "p4", 1., -5., 5.),
-            ROOT.RooRealVar(pdf_name + "_p5", "p5", 1., -1.5, 1.5),
-            ]
-    object_keeper.add_multiple(parameters)
-    return build_rpsbp(pdf_name, expression.format(mt_scale), mt, parameters, bkg_hist)
+    object_keeper.add_multiple(parameters)    
+    return parameters
 
 
-def make_alt_pdf(npars, bkg_hist, mt, name=None, mt_scale='1000', par_lo=-50., par_up=50.):
-    pdf_name = 'bsvj_bkgfitalt_npars'+str(npars) if name is None else name
-    parameters = [
-        ROOT.RooRealVar(pdf_name + '_p{0}'.format(i+1), '', 1., par_lo, par_up) \
-        for i in range(npars)
-        ]
-    expression = pdf_expression('alt', npars, mt_scale)
-    object_keeper.add_multiple(parameters)
-    return build_rpsbp(pdf_name, expression.format(mt_scale), mt, parameters, bkg_hist)
+def pdf_factory(pdf_type, n_pars, mt, bkg_th1, name=None, mt_scale='1000'):
+    """
+    Main factory entry point to generate a single RooParametricShapeBinPDF on a TH1
+    """
+    if pdf_type not in {'main', 'alt'}: raise Exception('Unknown pdf_type %s' % pdf_type)
+    if name is None: name = uid()
+    pdf = build_rpsbp(
+        name,
+        pdf_expression(pdf_type, n_pars, mt_scale),
+        mt,
+        pdf_parameters(pdf_type, n_pars, name),
+        bkg_th1
+        )
+    pdf.pdf_type = pdf_type
+    return pdf
 
-
-def get_main_pdfs(bkg_hist, mt, mt_scale='1000'):
-    return [make_main_pdf(npars, bkg_hist, mt, mt_scale=mt_scale) for npars in range(2,6)]
-
-
-def get_alt_pdfs(bkg_hist, mt, mt_scale='1000'):
-    return [make_alt_pdf(npars, bkg_hist, mt, mt_scale=mt_scale) for npars in range(1,5)]
-
-
-def get_pdfs(pdftype, *args, **kwargs):
-    if pdftype == 'main':
-        return get_main_pdfs(*args, **kwargs)
-    elif pdftype == 'alt':
-        return get_alt_pdfs(*args, **kwargs)
-    else:
-        raise Exception('No such pdftype: {}'.format(pdftype))
+def pdfs_factory(pdf_type, mt, bkg_th1, name=None, mt_scale='1000'):
+    """
+    Like pdf_factory, but returns a list for all available n_pars
+    """
+    all_n_pars = [2, 3, 4, 5] if pdf_type == 'main' else [1, 2, 3, 4]
+    return [ pdf_factory(pdf_type, n_pars, mt, bkg_th1, name+str(n_pars), mt_scale) for n_pars in all_n_pars]
 
 
 def fit_pdf_to_datahist(pdf, data_hist, init_vals=None, init_ranges=None):
     logger.info('Fitting pdf {0} to data_hist {1} with RooFit'.format(pdf, data_hist))
 
     if init_vals is not None:
-        if len(init_vals) != len(pdf.parameters)-1:
+        if len(init_vals) != len(pdf.parameters):
             raise Exception('Expected {} values; got {}'.format(len(pdf.parameters)-1, len(init_vals)))
-        for par, value in zip(pdf.parameters[1:], init_vals):
+        for par, value in zip(pdf.parameters, init_vals):
             old_range = max(abs(par.getMin()), abs(par.getMax()))
             if abs(value) > old_range:
                 new_range = 1.1*abs(value)
@@ -528,9 +550,9 @@ def fit_pdf_to_datahist(pdf, data_hist, init_vals=None, init_ranges=None):
                 .format(par.GetName(), par.GetTitle(), value, par.getMin(), par.getMax())
                 )
     if init_ranges is not None:
-        if len(init_ranges) != len(pdf.parameters)-1:
-            raise Exception('Expected {} values; got {}'.format(len(pdf.parameters)-1, len(init_ranges)))
-        for par, (left, right) in zip(pdf.parameters[1:], init_ranges):
+        if len(init_ranges) != len(pdf.parameters):
+            raise Exception('Expected {} values; got {}'.format(len(pdf.parameters), len(init_ranges)))
+        for par, (left, right) in zip(pdf.parameters, init_ranges):
             par.setRange(left, right)
             logger.info(
                 'Setting {0} ({1}) range to {2} to {3}'
@@ -857,6 +879,89 @@ class Datacard:
         self.rates = OrderedDict() # Expects str as key, OrderedDict as value
         self.systs = []
 
+    def __eq__(self, other):
+        return (
+            self.shapes == other.shapes
+            and self.channels == other.channels
+            and self.rates == other.rates
+            and self.systs == other.systs
+            )
+
+    @property
+    def syst_names(self):
+        return [s[0] for s in self.systs]
+
+    def syst_rgx(self, rgx):
+        """
+        Returns a list of all systematics that match a pattern
+        (Uses Unix file-like pattern matching, e.g. 'bkg_*')
+        """
+        import fnmatch
+        return [s for s in self.syst_names if fnmatch.fnmatch(s, rgx)]
+
+
+def read_dc(datacard):
+    """
+    Returns a Datacard object based on the txt stored in the passed path
+    """
+    with open(datacard, 'r') as f:
+        return read_dc_txt(f.read())
+
+
+def read_dc_txt(txt):
+    """
+    Returns a Datacard object based on the passed datacard txt.
+    """
+    lines = txt.split('\n')
+    dc = Datacard()
+
+    blocks = []
+    block = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        elif line.startswith('#'):
+            continue
+        elif line.startswith('---------------'):
+            blocks.append(block)
+            block = []
+            continue
+        block.append(line)
+    blocks.append(block)
+    if len(blocks) != 5:
+        raise Exception('Found {} blocks, expected 5'.format(len(blocks)))
+
+    # Shapes are easy
+    for line in blocks[1]: dc.shapes.append(line.split()[1:])
+    # pprint(dc.shapes)
+
+    # Channels
+    channel_table = transpose([ l.split() for l in blocks[2] ])[1:]
+    for name, rate in channel_table:
+        dc.channels.append((name, int(rate)))
+    # pprint(dc.channels)
+
+    # Rates
+    rate_table = transpose([ l.split() for l in blocks[3] ])[1:]
+    for ch, name, index, rate in rate_table:
+        dc.rates.setdefault(ch, OrderedDict())
+        dc.rates[ch][name] = int(rate)
+    # pprint(dc.rates)
+
+    # Systs
+    for line in blocks[4]:
+        syst = line.split()
+        if len(syst) >= 3:
+            try:
+                syst[2] = float(syst[2])
+            except TypeError:
+                pass
+        dc.systs.append(syst)
+    # pprint(dc.systs)
+
+    return dc
+
 
 def parse_dc(dc):
     '''
@@ -985,7 +1090,7 @@ def compile_datacard_macro(bkg_pdf, data_obs, sig, outfile='dc_bsvj.txt', systs=
     dc.rates['bsvj']['roomultipdf' if is_multipdf else 'bkg'] = data_obs.sumEntries()
     # Freely floating bkg parameters
     def systs_for_pdf(pdf):
-        for par in pdf.parameters[1:]:
+        for par in pdf.parameters:
             dc.systs.append([par.GetName(), 'flatParam'])
     [systs_for_pdf(p) for p in multipdf.pdfs] if is_multipdf else systs_for_pdf(bkg_pdf)
     # Rest of the systematics
@@ -1005,7 +1110,7 @@ def camel_to_snake(name):
     return re.sub('([a-z0-9])([A-Z])', r'\1_\2', name).lower()
 
 
-class CombineCommand:
+class CombineCommand(object):
 
     comma_separated_args = [
         '--freezeParameters',
@@ -1025,14 +1130,24 @@ class CombineCommand:
         self.parameters = OrderedDict()
         self.parameter_ranges = OrderedDict()
 
+    def get_name_key(self):
+        """
+        'name' parameter for the combine CLI can be either '-n' or '--name';
+        ensure consistency
+        """
+        assert ('-n' in self.kwargs) + ('--name' in self.kwargs) < 2
+        if '-n' in self.kwargs:
+            return '-n'
+        else:
+            return '--name'
+            
     @property
     def name(self):
-        if '-n' in self.kwargs:
-            return self.kwargs['-n']
-        elif '--name' in self.kwargs:
-            return self.kwargs['--name']
-        else:
-            return 'Test'
+        return self.kwargs.get(self.get_name_key(), '')
+
+    @name.setter
+    def name(self, val):
+        self.kwargs[self.get_name_key()] = val
 
     @property
     def outfile(self):
@@ -1080,6 +1195,50 @@ class CombineCommand:
             command.append('--setParameterRanges ' + ':'.join(strs))
 
         return command
+
+
+def likelihood_scan_factory(
+    datacard,
+    rmin=0., rmax=2., n=40,
+    verbosity=0, asimov=False,
+    pdf_type='alt'
+    ):
+    """
+    Returns a good CombineCommand template for a likelihood scan 
+    """
+    dc = read_dc(datacard)
+    cmd = CombineCommand(datacard, 'MultiDimFit')
+
+    cmd.redefine_signal_pois.append('r')
+    cmd.add_range('r', rmin, rmax)
+    cmd.track_parameters.extend(['r'])
+
+    cmd.args.add('--saveWorkspace')
+    cmd.args.add('--saveNLL')
+    cmd.kwargs['--algo'] = 'grid'
+    cmd.kwargs['--points'] = n
+    cmd.kwargs['--X-rtd'] = 'REMOVE_CONSTANT_ZERO_POINT=1'
+    cmd.kwargs['--alignEdges'] = 1
+    cmd.kwargs['-v'] = verbosity
+
+    if asimov:
+        cmd.kwargs['-t'] = '-1'
+        cmd.args.add('--toysFreq')
+        cmd.kwargs['-n'] = 'Asimov'
+    else:
+        cmd.kwargs['-n'] = 'Observed'
+
+    cmd.freeze_parameters.append('pdf_index')
+    if pdf_type == 'alt':
+        cmd.set_parameter('pdf_index', 1)
+        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitmain_*'))
+    elif pdf_type == 'main':
+        cmd.set_parameter('pdf_index', 0)
+        cmd.freeze_parameters.extend(dc.syst_rgx('bsvj_bkgfitalt_*'))
+    else:
+        raise Exception('Unknown pdf_type {}'.format(pdf_type))
+
+    return cmd
 
 
 @contextmanager
